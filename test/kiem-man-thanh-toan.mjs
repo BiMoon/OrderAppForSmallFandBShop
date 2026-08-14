@@ -123,6 +123,12 @@ export async function runTransaction(r, fn){
   if (v !== undefined) ghi(r._p, v);
   return { committed: v !== undefined, snapshot: { val: () => doc(r._p), exists: () => doc(r._p) !== null } };
 }
+/* query/orderByKey/limitToLast: bản giả bỏ qua phần giới hạn, chỉ cần trả về
+   đúng ref để onValue nghe được cả nhánh. Số lượng không phải thứ bài kiểm này
+   đo. */
+export const query = (r) => r;
+export const orderByKey = () => ({});
+export const limitToLast = () => ({});
 export const onChildAdded = () => () => {};
 export const onChildChanged = () => () => {};
 export const onChildRemoved = () => () => {};

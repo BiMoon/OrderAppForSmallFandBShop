@@ -6,6 +6,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import {
   getDatabase, ref, push, set, remove, update, onValue, runTransaction,
+  query, orderByKey, limitToLast,
   onChildAdded, onChildChanged, onChildRemoved, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 import {
@@ -270,7 +271,12 @@ export function initData(){
     emit('cancelled');
   }, () => { data.cancelled = []; emit('cancelled'); });
 
-  onValue(billsRef, snap => {
+  // CHỈ lấy 200 hóa đơn gần nhất, không lấy cả nhánh.
+  // Khóa có dạng QCH{yymmdd}{seq} nên xếp theo khóa CHÍNH LÀ xếp theo ngày —
+  // `limitToLast` cho ra mấy hóa đơn mới nhất mà không cần `.indexOn` nào.
+  // Không giới hạn thì sau ba tháng mỗi lần mở app là tải về vài nghìn hóa đơn
+  // cũ, và cái chậm đó lớn dần đến mức không ai nhớ vì sao.
+  onValue(query(billsRef, orderByKey(), limitToLast(200)), snap => {
     data.bills = snapToArray(snap).map(({key, val:v}) => ({ key, ...v }));
     emit('bills');
   }, () => { data.bills = []; emit('bills'); });

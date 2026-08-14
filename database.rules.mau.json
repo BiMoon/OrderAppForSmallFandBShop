@@ -1,16 +1,20 @@
 {
-  "_ghi_chu": [
-    "MẪU — không tự deploy file này.",
-    "Rules thật đang nằm trong Firebase Console. Mở Console -> Realtime Database",
-    "-> Rules, đối chiếu rồi THÊM hai nhánh `bills` và `counters` vào bản đang có.",
-    "Deploy đè cả file mà chưa đối chiếu là có thể khoá luôn app web cũ.",
+  "_ĐỌC_TRƯỚC_KHI_DÙNG": [
+    "Đây là bản ĐỀ NGHỊ, không phải bản đang chạy.",
     "",
-    "Webhook SePay ghi bằng Admin SDK nên BỎ QUA rules — phần dưới chỉ chi phối",
-    "trình duyệt.",
+    "Đo được ngày 14/08/2026: gọi REST không đăng nhập vào /orders.json và",
+    "/bills.json đều trả 401, nghĩa là rules hiện tại ĐÃ đòi đăng nhập.",
+    "Nên bản dưới đây giữ nguyên tinh thần đó, chỉ THÊM hai nhánh bills và",
+    "counters.",
     "",
-    "Nếu rules hiện tại của `orders` chặt hơn `auth != null` (ví dụ danh sách",
-    "email được phép), hãy dùng đúng điều kiện đó cho `bills` thay vì bản này."
+    "VẪN PHẢI ĐỐI CHIẾU với bản trong Firebase Console trước khi dán đè:",
+    "console.firebase.google.com/project/quanlyphachequan/database/quanlyphachequan-default-rtdb/rules",
+    "Nếu bản trong Console có nhánh nào không có ở đây, GIỮ LẠI nhánh đó.",
+    "",
+    "Webhook SePay ghi bằng Admin SDK nên BỎ QUA toàn bộ file này — siết chặt",
+    "tới đâu cũng không chặn được đường tiền tự động."
   ],
+
   "rules": {
     "orders":    { ".read": "auth != null", ".write": "auth != null" },
     "history":   { ".read": "auth != null", ".write": "auth != null" },
@@ -18,16 +22,32 @@
 
     "bills": {
       ".read": "auth != null",
-      ".write": "auth != null",
       "$ma": {
-        ".validate": "$ma.matches(/^QCH[0-9]{10}$/) && newData.hasChildren(['table','total','status'])"
+        ".write": "auth != null",
+
+        "//": [
+          "Khóa PHẢI là mã hóa đơn đúng dạng QCH+10 số. Chặn luôn chuyện một",
+          "lỗi lập trình đẻ ra bills/undefined hay bills/-N4xK… mà webhook",
+          "không bao giờ tìm thấy.",
+          "Chỉ chạy khi GHI; xóa hóa đơn thì .validate không được xét."
+        ],
+        ".validate": "$ma.matches(/^QCH[0-9]{10}$/) && newData.hasChildren(['table','total','status'])",
+
+        "total":      { ".validate": "newData.isNumber() && newData.val() >= 0" },
+        "status":     { ".validate": "newData.isString() && (newData.val() === 'unpaid' || newData.val() === 'paid')" },
+        "paidAmount": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+        "code":       { ".validate": "newData.val() === $ma" }
       }
     },
 
     "counters": {
       "bills": {
         ".read": "auth != null",
-        "$ngay": { ".write": "auth != null", ".validate": "newData.isNumber()" }
+        "$ngay": {
+          ".write": "auth != null",
+          "//": "Chỉ được tăng đúng 1. Máy khách không nhảy cóc số thứ tự được.",
+          ".validate": "newData.isNumber() && (data.exists() ? newData.val() === data.val() + 1 : newData.val() === 1)"
+        }
       }
     }
   }
