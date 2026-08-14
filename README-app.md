@@ -128,3 +128,88 @@ bubblewrap build
 
 Cần cài **JDK 17** và **Android SDK**. Kết quả là `app-release-signed.apk`
 (Trusted Web Activity — vỏ Android bọc chính PWA này, không phải viết lại app).
+
+---
+
+## 7. Thanh toán tại quán (VietQR + SePay)
+
+Thu ngân bấm tab **💳 Hóa đơn → Tạo hóa đơn**, chọn bàn, chọn % khuyến mãi nếu
+có. App sinh một mã dạng **`QCH2608140001`**, vẽ mã QR VietQR mang đúng số tiền
+và **lấy chính mã đó làm nội dung chuyển khoản**. Khách quét, chuyển tiền, và
+hóa đơn **tự nhảy sang "Đã thanh toán"** — không ai phải bấm gì.
+
+### Phiên bàn — đừng bỏ qua phần này
+
+Một bàn quay 6–8 lượt khách mỗi ngày. Hóa đơn **chỉ gom món phát sinh sau lần
+thanh toán gần nhất của bàn đó**, nên lượt khách thứ hai không bị tính lại tiền
+của lượt thứ nhất. Cơ chế nằm ở `app/js/phien.js`, có test riêng:
+
+```bash
+npm test
+```
+
+Trạng thái bàn hiện thành vạch màu dưới mỗi nút bàn, và **suy ra từ hóa đơn**
+chứ không lưu cờ nào:
+
+| Vạch | Nghĩa |
+|---|---|
+| (không có) | Bàn trống |
+| xanh ngọc | Đang phục vụ — có món chưa tính tiền |
+| cam | Chờ trả tiền — đã tạo hóa đơn |
+| xanh lá | Đã trả — giữ nhãn tới khi có khách mới gọi món |
+
+Quầy pha chế cũng thấy nhãn **✅ Đã trả** / **⏳ Chờ trả** ngay trên phiếu.
+
+### Hai app, một tài khoản ngân hàng
+
+App đặt món online (`ghecauhai.netlify.app`) và app này đổ tiền vào **cùng một
+tài khoản ACB**, nên SePay bắn cả hai về **cùng một webhook**. Phân biệt bằng
+tiền tố mã:
+
+| Mã | Của ai | Ghi vào |
+|---|---|---|
+| `GCH…` | khách đặt online | Firestore `orders` |
+| `QCH…` | khách ngồi tại quán | RTDB `bills` |
+
+Định dạng mã ở `app/js/core.js` (`taoMaHoaDon`) **phải khớp** với
+`lib/maHoaDon.mjs` bên repo `ghecauhai-website`. Đổi một bên là tiền không khớp
+được vào hóa đơn nào và nằm chờ đối soát tay.
+
+**Đừng dựng webhook thứ hai.** Hai chỗ chống trùng giao dịch là có ngày cộng
+tiền hai lần.
+
+### Cần cấu hình gì trước khi chạy thật
+
+1. **Bên repo `ghecauhai-website`** — Netlify → Environment variables, thêm:
+   ```
+   FIREBASE_DATABASE_URL = https://quanlyphachequan-default-rtdb.asia-southeast1.firebasedatabase.app
+   ```
+   (`SHOP_BANK_ID`, `SHOP_ACCOUNT_NO`, `SHOP_ACCOUNT_NAME` đã có sẵn.)
+   Rồi `npm run deploy`.
+
+2. **Rules Realtime Database** — thêm nhánh `bills` và `counters`.
+   Xem `database.rules.mau.json`; **đối chiếu với bản đang có trong Console rồi
+   thêm vào**, đừng deploy đè.
+
+3. Deploy app này: `firebase deploy --only hosting`.
+
+Số tài khoản **không** chép tay vào `core.js` — app hỏi
+`https://ghecauhai.netlify.app/api/cau-hinh-quan` một lần rồi nhớ vào máy. Chưa
+lấy được thì app nói rõ chứ không vẽ một mã QR hỏng.
+
+### Khi webhook không chạy
+
+Vẫn còn hai nút bấm tay trên mỗi hóa đơn: **💵 Tiền mặt** và **🏦 Chuyển khoản**.
+Hóa đơn ghi lại ai chốt (`paidBy`: `sepay` hay `nguoi`) và trả bằng gì
+(`payMethod`), nên cuối tháng đối soát được và biết webhook có thật sự chạy hay
+thu ngân vẫn phải bấm tay.
+
+### Kiểm tra
+
+```bash
+npm test                              # logic phiên bàn
+node test/kiem-man-thanh-toan.mjs     # cả màn hình, bằng trình duyệt thật
+```
+
+Bài thứ hai thay Firebase bằng bản giả nạp qua `page.route`, nên chạy được offline
+và dựng màn hình bằng **chính** `pos.js`/`core.js` đang chạy thật.

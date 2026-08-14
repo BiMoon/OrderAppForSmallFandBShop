@@ -1,0 +1,34 @@
+{
+  "_ghi_chu": [
+    "MẪU — không tự deploy file này.",
+    "Rules thật đang nằm trong Firebase Console. Mở Console -> Realtime Database",
+    "-> Rules, đối chiếu rồi THÊM hai nhánh `bills` và `counters` vào bản đang có.",
+    "Deploy đè cả file mà chưa đối chiếu là có thể khoá luôn app web cũ.",
+    "",
+    "Webhook SePay ghi bằng Admin SDK nên BỎ QUA rules — phần dưới chỉ chi phối",
+    "trình duyệt.",
+    "",
+    "Nếu rules hiện tại của `orders` chặt hơn `auth != null` (ví dụ danh sách",
+    "email được phép), hãy dùng đúng điều kiện đó cho `bills` thay vì bản này."
+  ],
+  "rules": {
+    "orders":    { ".read": "auth != null", ".write": "auth != null" },
+    "history":   { ".read": "auth != null", ".write": "auth != null" },
+    "cancelled": { ".read": "auth != null", ".write": "auth != null" },
+
+    "bills": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "$ma": {
+        ".validate": "$ma.matches(/^QCH[0-9]{10}$/) && newData.hasChildren(['table','total','status'])"
+      }
+    },
+
+    "counters": {
+      "bills": {
+        ".read": "auth != null",
+        "$ngay": { ".write": "auth != null", ".validate": "newData.isNumber()" }
+      }
+    }
+  }
+}

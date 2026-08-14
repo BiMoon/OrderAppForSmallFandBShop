@@ -1,0 +1,10 @@
+{
+  "name": "quanlyphachequan-order",
+  "private": true,
+  "type": "module",
+  "description": "App trong quán — POS, quầy pha chế, sơ chế, thống kê",
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\"",
+    "deploy": "firebase deploy --only hosting"
+  }
+}

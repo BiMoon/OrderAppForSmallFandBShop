@@ -6,7 +6,9 @@
 import {
   el, esc, rxEsc, money, hm, fmtElapsed, ageClass, nf, ymd,
   TABLES, CANCEL_REASONS, data, onData, findMenuItem, nameOf, priceOf,
-  sendOrders, requestCancel, clearCancel, saveBill, updateBillStatus, vietQRUrl,
+  sendOrders, requestCancel, clearCancel, saveBill, traTay, moLaiHoaDon, xoaHoaDon,
+  vietQRUrl, VIETQR, taiCauHinhQR,
+  monChuaTinhTien, hoaDonMoCuaBan, trangThaiBan, TRANG_THAI_BAN,
   db, FB,
   toast, sheet, closeSheet, store, audio
 } from './core.js';
@@ -258,6 +260,39 @@ const CSS = `
 .tbtn .bg.wait{background:var(--amber);top:-5px;right:-5px}
 .tbtn .bg.cart{background:var(--brand);top:-5px;left:-5px}
 .tbtn .bg[hidden]{display:none}
+
+/* Trạng thái bàn — một vạch màu dưới đáy nút, không tranh chỗ với hai chấm
+   đếm sẵn có ở hai góc trên. Nhìn cả dải là ra sơ đồ quán. */
+.tbtn .tstate{
+  position:absolute;left:8px;right:8px;bottom:5px;height:3px;border-radius:99px;
+}
+.tbtn .tstate[hidden]{display:none}
+.tbtn[data-tt="dangPhucVu"] .tstate{background:var(--brand)}
+.tbtn[data-tt="choTra"]     .tstate{background:var(--amber)}
+.tbtn[data-tt="daTra"]      .tstate{background:var(--ok)}
+.tbtn[data-tt="choTra"]{border-color:var(--amber);background:var(--amber-soft)}
+.tbtn[data-tt="daTra"]{background:var(--ok-soft)}
+.tbtn.active[data-tt]{background:linear-gradient(135deg,var(--brand),var(--brand-2))}
+.tbtn.active .tstate{box-shadow:0 0 0 1.5px rgba(255,255,255,.6)}
+
+/* Dòng ghi chú dưới chân hóa đơn */
+.bill-note{
+  margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);
+  font-size:12.5px;line-height:1.5;
+}
+.bill-note.ok{color:var(--ok)}
+.bill-note.warn{color:var(--warn)}
+.bill-note b{font-weight:700}
+
+.bill-qr .cho-tien{color:var(--brand-dark);font-weight:600}
+.bill-qr .qr-thieu{
+  font-size:13px;color:var(--warn);text-align:center;line-height:1.6;
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+}
+.nb-canh{
+  padding:10px 12px;margin-bottom:10px;border-radius:10px;
+  background:var(--warn-soft);color:var(--warn);font-size:13px;line-height:1.5;
+}
 .tot{
   display:flex;align-items:center;justify-content:space-between;
   padding:14px 16px;
@@ -307,7 +342,10 @@ const CSS = `
 .bill-qr img{width:180px;height:180px;border-radius:12px;border:1px solid var(--line)}
 .bill-qr .qr-note{font-size:12px;color:var(--ink-3);text-align:center}
 .bill-acts{display:flex;gap:8px;padding:0 14px 14px}
-.bill-acts .btn{flex:1;min-height:44px;font-size:13.5px}
+.bill-acts .btn{flex:1;min-height:44px;font-size:13.5px;white-space:nowrap}
+/* Nút xóa giữ bề rộng cố định. Để nó flex:1 như hai nút kia là ba nút chia ba
+   phần bằng nhau, chữ tràn ra ngoài và đè lên nhau trên máy 390px. */
+.bill-acts .btn.danger{flex:0 0 46px;padding-inline:0}
 `;
 
 /* ─────────────────── khởi tạo ─────────────────── */
@@ -322,7 +360,9 @@ export function mountPos(root){
   onData(w => {
     if (w === 'orders'){ renderTables(); renderPending(); notifyRejects(); }
     if (w === 'menu')  { renderMenu(); preview(); }
-    if (w === 'bills') { renderBillList(); }
+    if (w === 'history'){ renderTables(); }
+    if (w === 'vietqr'){ renderBillList(); }
+    if (w === 'bills') { renderTables(); renderBillList(); baoTienVe(); }
   });
   setView(view); setTab(tab); renderAll();
 
@@ -345,10 +385,15 @@ function buildTables(){
     const n = i+1;
     return `<button class="tbtn" data-t="${n}">
       <span class="bg cart" hidden></span><span class="bg wait" hidden></span>
-      <b>${n}</b><s>bàn</s></button>`;
+      <b>${n}</b><s>bàn</s><i class="tstate" hidden></i></button>`;
   }).join('');
   tblEls = [...el('posTables').children];
 }
+/**
+ * Dải bàn — vừa là nút chọn bàn, vừa là sơ đồ quán.
+ * Trạng thái SUY RA từ hóa đơn (xem trangThaiBan trong core.js), không lưu cờ
+ * nào, nên không có gì để quên cập nhật.
+ */
 function renderTables(){
   tblEls.forEach((b,i) => {
     const n = i+1;
@@ -360,6 +405,14 @@ function renderTables(){
     const bc = b.children[0], bw = b.children[1];
     bc.hidden = !c;  bc.textContent = c || '';
     bw.hidden = !pq; bw.textContent = pq || '';
+
+    const tt = trangThaiBan(n);
+    b.dataset.tt = tt;
+    const dot = b.querySelector('.tstate');
+    if (dot){
+      dot.hidden = tt === 'trong';
+      dot.title = TRANG_THAI_BAN[tt].nhan;
+    }
   });
 }
 
@@ -436,13 +489,17 @@ function bind(){
   };
   el('posBillNew').onclick = () => newBillSheet();
   el('posBillList').onclick = e => {
-    const b = e.target.closest('[data-bill-pay]');
-    if (b) return payBill(b.dataset.billPay);
+    const c = e.target.closest('[data-bill-cash]');
+    if (c) return traTienSheet(c.dataset.billCash, 'tienmat');
+    const m = e.target.closest('[data-bill-manual]');
+    if (m) return traTienSheet(m.dataset.billManual, 'chuyenkhoan');
     const u = e.target.closest('[data-bill-unpay]');
-    if (u) return updateBillStatus(u.dataset.billUnpay, 'unpaid')
-      .then(()=>toast('Da chuyen ve chua thanh toan')).catch(fail);
+    if (u) return moLaiHoaDon(u.dataset.billUnpay)
+      .then(()=>toast('Đã chuyển về chưa thanh toán')).catch(fail);
     const d = e.target.closest('[data-bill-del]');
     if (d) return deleteBillSheet(d.dataset.billDel);
+    if (e.target.closest('[data-bill-cauhinh]'))
+      return taiCauHinhQR().then(() => { renderBillList(); toast('Đã tải lại cấu hình'); });
   };
 }
 const fail = e => { console.error(e); toast('Không gửi được — kiểm tra quyền ghi (.write)','err'); };
@@ -699,24 +756,31 @@ export function renderAll(){ renderTables(); renderCart(); renderPending(); rend
 export const posBadge = () => cart.reduce((s,o)=>s+o.qty,0);
 
 /* ─────────────────── HÓA ĐƠN ─────────────────── */
-function billItemsForTable(tbl){
-  const pending = data.orders
-    .filter(o => o.table == tbl)
-    .map(o => ({ name: o.item, stt: o.stt, qty: Number(o.quantity)||1, price: o.price, status:'pending' }));
-  const today = ymd();
-  const done = data.history
-    .filter(h => h.table == tbl && h.completedDate === today)
-    .map(h => ({ name: h.item, stt: h.stt, qty: Number(h.quantity)||1, price: h.price, status:'done' }));
-  return [...pending, ...done];
-}
+/**
+ * Món của bàn chưa nằm trong hóa đơn nào ĐÃ TRẢ.
+ *
+ * Bản cũ gom cả lịch sử hôm nay của bàn, nên lượt khách thứ hai của cùng một
+ * bàn bị tính lại tiền của lượt thứ nhất. Một bàn quay 6–8 lượt/ngày thì đó là
+ * tính sai tiền mỗi ngày. Logic phiên bàn nằm ở core.js.
+ */
+const billItemsForTable = tbl => monChuaTinhTien(tbl);
 
 function newBillSheet(){
-  const tables = [...new Set([
-    ...data.orders.map(o => o.table),
-    ...data.history.filter(h => h.completedDate === ymd()).map(h => h.table)
-  ])].filter(Boolean).sort((a,b) => (+a||999)-(+b||999));
+  // Chỉ những bàn đang có món chưa tính tiền. Bàn đã trả xong mà vẫn hiện ở
+  // đây là mời thu ngân tạo một hóa đơn 0đ.
+  const tables = Array.from({length:TABLES},(_,i)=>i+1)
+    .filter(n => ['dangPhucVu','choTra'].includes(trangThaiBan(n)));
 
-  let selTable = table;
+  // Bàn đang có hóa đơn chưa trả thì mở lại cái đó, đừng đẻ thêm cái thứ hai —
+  // hai điện thoại cùng bấm là bàn 3 có hai mã QR khác nhau, khách quét cái nào
+  // cũng chỉ trả được một nửa.
+  const dangMo = hoaDonMoCuaBan(table);
+  if (dangMo){
+    setView('bill');
+    return toast(`Bàn ${table} đang có hóa đơn ${dangMo.code} chưa thanh toán`, 'err');
+  }
+
+  let selTable = tables.includes(table) ? table : (tables[0] ?? table);
   let discount = 0;
 
   const refreshPreview = () => {
@@ -724,8 +788,14 @@ function newBillSheet(){
     const subtotal = items.reduce((s,i) => s + (i.price||0)*i.qty, 0);
     const discAmt  = Math.round(subtotal * discount / 100);
     const total    = subtotal - discAmt;
+    const mo       = hoaDonMoCuaBan(selTable);
     const box = el('nbPreview'); if (!box) return;
-    box.innerHTML = items.length
+
+    box.innerHTML = (mo
+      ? `<p class="nb-canh">Bàn ${esc(selTable)} đang có hóa đơn <b>${esc(mo.code)}</b> chưa thanh toán.
+           Thanh toán hoặc xóa hóa đơn đó trước.</p>`
+      : '')
+      + (items.length
       ? items.map(i => `<div class="bill-row">
           <span class="bn">${esc(i.name)}${i.status==='pending' ? ' <span style="color:var(--warn);font-size:11px">(chờ pha)</span>' : ''}</span>
           <span class="bq">${i.qty} ly</span>
@@ -736,15 +806,18 @@ function newBillSheet(){
             ${discount ? `<div class="bill-foot-row discount"><span>Giảm ${discount}%</span><span>-${money(discAmt)}</span></div>` : ''}
             <div class="bill-foot-row total"><span>Tổng</span><span>${money(total)}</span></div>
           </div>`
-      : '<p style="color:var(--ink-3);font-size:13.5px">Bàn này chưa có món nào hôm nay.</p>';
+      : '<p style="color:var(--ink-3);font-size:13.5px">Bàn này chưa có món nào chưa tính tiền.</p>');
   };
 
   sheet({
     title: 'Tạo hóa đơn',
+    desc: 'Chỉ gom món phát sinh sau lần thanh toán gần nhất của bàn.',
     body: `
       <div class="sec-label" style="margin-top:0">Chọn bàn</div>
       <div class="chiprow" id="nbTables">
-        ${tables.map(t => `<button class="chip ${t==selTable?'active':''}" data-t="${t}">Bàn ${t}</button>`).join('')}
+        ${tables.length
+          ? tables.map(t => `<button class="chip ${t==selTable?'active':''}" data-t="${t}">Bàn ${t}</button>`).join('')
+          : '<span style="color:var(--ink-3);font-size:13.5px">Không bàn nào đang có món chưa tính tiền.</span>'}
       </div>
       <div class="sec-label">Khuyến mãi (%)</div>
       <div style="display:flex;align-items:center;gap:10px">
@@ -757,14 +830,17 @@ function newBillSheet(){
     actions:[
       { label: 'Hủy' },
       { label: 'Tạo & hiển thị QR', cls: 'solid', keepOpen: true, onClick(){
+          if (hoaDonMoCuaBan(selTable))
+            return toast('Bàn này còn hóa đơn chưa thanh toán', 'err');
           const items = billItemsForTable(selTable);
           if (!items.length) return toast('Bàn này chưa có món', 'err');
           const subtotal = items.reduce((s,i) => s+(i.price||0)*i.qty, 0);
           const discAmt  = Math.round(subtotal * discount / 100);
           const total    = subtotal - discAmt;
-          const desc     = `Ban ${selTable} ${ymd()}`;
-          saveBill({ table: selTable, items, subtotal, discount, discAmt, total, desc })
-            .then(() => { closeSheet(); setView('bill'); toast('Da tao hoa don', 'ok'); })
+          if (total <= 0) return toast('Tổng tiền bằng 0 — kiểm tra lại giá món', 'err');
+
+          saveBill({ table: selTable, items, subtotal, discount, discAmt, total })
+            .then(code => { closeSheet(); setView('bill'); toast('Đã tạo hóa đơn ' + code, 'ok'); })
             .catch(fail);
         }
       }
@@ -789,6 +865,11 @@ function newBillSheet(){
   }, 50);
 }
 
+/* ─────────────────── danh sách hóa đơn ─────────────────── */
+
+const AI_CHOT = { sepay: 'SePay tự nhận', nguoi: 'thu ngân xác nhận' };
+const CACH_TRA = { chuyenkhoan: 'Chuyển khoản', tienmat: 'Tiền mặt' };
+
 function renderBillList(){
   const box = el('posBillList'); if (!box) return;
   const bills = [...data.bills].sort((a,b) => (b.createdAt||0)-(a.createdAt||0));
@@ -805,13 +886,16 @@ function renderBillList(){
   }
 
   box.innerHTML = bills.map(b => {
-    const paid = b.status === 'paid';
-    const qrUrl = vietQRUrl(b.total, b.desc || `Ban ${b.table}`);
+    const paid   = b.status === 'paid';
+    const daTra  = Number(b.paidAmount) || 0;
+    const thieu  = Math.max(0, (Number(b.total)||0) - daTra);
+    const qrUrl  = paid ? null : vietQRUrl(b.total, b.code || `BAN ${b.table}`);
     const timeStr = b.createdAt ? new Date(b.createdAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'}) : '';
+
     return `<div class="bill-card ${paid ? 'paid' : ''}">
       <div class="bill-head">
         <span class="tbl">Bàn ${esc(b.table)}</span>
-        <span class="time">${timeStr}</span>
+        <span class="time">${timeStr}${b.code ? ' · ' + esc(b.code) : ''}</span>
         <span class="bill-status ${paid ? 'paid' : 'unpaid'}">${paid ? '✅ Đã thanh toán' : '⏳ Chưa thanh toán'}</span>
       </div>
       <div class="bill-items">
@@ -825,38 +909,87 @@ function renderBillList(){
         <div class="bill-foot-row"><span>Tạm tính</span><span>${money(b.subtotal)}</span></div>
         ${b.discount ? `<div class="bill-foot-row discount"><span>Giảm ${b.discount}%</span><span>-${money(b.discAmt)}</span></div>` : ''}
         <div class="bill-foot-row total"><span>Tổng cộng</span><span>${money(b.total)}</span></div>
+        ${paid
+          ? `<div class="bill-note ok">${CACH_TRA[b.payMethod] || 'Đã thu'} · ${AI_CHOT[b.paidBy] || 'đã chốt'}${
+               b.overpaid ? ` · <b>khách chuyển thừa ${money(b.overpaidAmount)}</b>` : ''}</div>`
+          : daTra > 0
+            ? `<div class="bill-note warn">Đã nhận ${money(daTra)} — <b>còn thiếu ${money(thieu)}</b></div>`
+            : ''}
       </div>
-      ${!paid ? `<div class="bill-qr">
-        <img src="${esc(qrUrl)}" alt="QR thanh toán" loading="lazy">
-        <div class="qr-note">Quét mã để thanh toán ${money(b.total)}</div>
-      </div>` : ''}
+      ${!paid ? (qrUrl
+        ? `<div class="bill-qr">
+             <img src="${esc(qrUrl)}" alt="QR thanh toán ${esc(b.code||'')}" loading="lazy">
+             <div class="qr-note">
+               Quét mã để chuyển ${money(thieu || b.total)}<br>
+               Nội dung: <b>${esc(b.code || '')}</b><br>
+               <span class="cho-tien">Tiền về là tự đổi trạng thái, không phải bấm gì.</span>
+             </div>
+           </div>`
+        : `<div class="bill-qr">
+             <div class="qr-thieu">Chưa lấy được số tài khoản nhận tiền nên không vẽ mã QR.
+               <button class="btn sm" data-bill-cauhinh="1">Thử lại</button></div>
+           </div>`) : ''}
       <div class="bill-acts">
         ${!paid
-          ? `<button class="btn solid" data-bill-pay="${b.key}">✅ Xác nhận đã thanh toán</button>`
-          : `<button class="btn" data-bill-unpay="${b.key}">↩ Hoàn tác</button>`
+          ? `<button class="btn solid" data-bill-cash="${b.code}">💵 Tiền mặt</button>
+             <button class="btn" data-bill-manual="${b.code}">🏦 Chuyển khoản</button>`
+          : `<button class="btn" data-bill-unpay="${b.code}">↩ Hoàn tác</button>`
         }
-        <button class="btn danger" data-bill-del="${b.key}">🗑</button>
+        <button class="btn danger" data-bill-del="${b.code}">🗑</button>
       </div>
     </div>`;
   }).join('');
 }
 
-function payBill(key){
-  updateBillStatus(key, 'paid')
-    .then(() => toast('Đã thanh toán!', 'ok'))
-    .catch(fail);
+/* ─────────────────── chuông báo tiền về ───────────────────
+   Chỉ kêu khi WEBHOOK chốt (paidBy === 'sepay'). Thu ngân tự bấm thì họ biết
+   rồi, kêu nữa chỉ tổ nhiễu. Lần vẽ đầu tiên thì im, nếu không mở app lên là
+   kêu inh ỏi vì cả chục hóa đơn cũ — cùng cái bẫy đã tránh ở chuông đơn mới. */
+let daThayBill = null;
+function baoTienVe(){
+  const bayGio = new Map(data.bills.map(b => [b.code || b.key, b.status]));
+  if (daThayBill === null){ daThayBill = bayGio; return; }
+
+  for (const [code, st] of bayGio){
+    if (st === 'paid' && daThayBill.get(code) === 'unpaid'){
+      const b = data.bills.find(x => (x.code || x.key) === code);
+      if (b && b.paidBy === 'sepay'){
+        audio.tienVe(); audio.buzz();
+        toast(`Bàn ${b.table} đã chuyển ${money(b.paidAmount || b.total)}`, 'ok');
+      }
+    }
+  }
+  daThayBill = bayGio;
 }
 
-function deleteBillSheet(key){
+function traTienSheet(code, cach){
+  const b = data.bills.find(x => x.code === code);
+  if (!b) return;
+  sheet({
+    title: cach === 'tienmat' ? 'Nhận tiền mặt?' : 'Xác nhận đã chuyển khoản?',
+    desc: `Bàn ${b.table} · ${money(b.total)}${
+      cach === 'chuyenkhoan' ? ' — chỉ bấm khi đã thấy tiền trong app ngân hàng.' : ''}`,
+    actions:[
+      { label: 'Chưa' },
+      { label: 'Xác nhận', cls: 'solid', onClick(){
+          traTay(code, cach).then(() => toast('Đã ghi nhận thanh toán', 'ok')).catch(fail);
+        }
+      }
+    ]
+  });
+}
+
+function deleteBillSheet(code){
+  const b = data.bills.find(x => x.code === code);
   sheet({
     title: 'Xóa hóa đơn?',
-    desc: 'Hóa đơn sẽ bị xóa vĩnh viễn.',
+    desc: b && b.status === 'paid'
+      ? 'Hóa đơn NÀY ĐÃ THANH TOÁN. Xóa đi là mất dấu khoản tiền đã nhận và bàn sẽ tính lại từ đầu.'
+      : 'Hóa đơn sẽ bị xóa vĩnh viễn. Món của bàn quay về danh sách chưa tính tiền.',
     actions:[
       { label: 'Giữ lại' },
       { label:'Xóa', cls:'solid danger', onClick(){
-          FB.remove(FB.ref(db, 'bills/' + key))
-            .then(() => toast('Đã xóa hóa đơn'))
-            .catch(fail);
+          xoaHoaDon(code).then(() => toast('Đã xóa hóa đơn')).catch(fail);
         }
       }
     ]

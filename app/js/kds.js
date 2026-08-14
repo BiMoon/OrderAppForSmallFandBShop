@@ -6,9 +6,25 @@
 import {
   el, esc, money, fmtElapsed, ageClass,
   data, onData, completeOrder, approveCancel, rejectCancel,
+  trangThaiBan, TRANG_THAI_BAN,
   toast, sheet, closeSheet, store, audio, keepAwake
 } from './core.js';
 import { openRecipeSheet } from './prep.js';
+
+/**
+ * Nhãn tiền của một bàn, hiện ngay trên phiếu pha chế.
+ *
+ * Quầy cần biết đúng một chuyện: bàn này đã trả tiền chưa. Bàn đã trả mà còn
+ * món đang pha là chuyện bình thường (khách trả trước rồi ngồi đợi), nhưng bàn
+ * đã trả rồi mà nhân viên bưng nhầm sang bàn khác thì mất cả ly lẫn tiền.
+ * Chỉ hiện khi có gì để nói — bàn đang phục vụ bình thường thì không dán nhãn.
+ */
+function nhanTien(tbl){
+  const tt = trangThaiBan(tbl);
+  if (tt === 'daTra')  return '<span class="btien ok">✅ Đã trả</span>';
+  if (tt === 'choTra') return '<span class="btien cho">⏳ Chờ trả</span>';
+  return '';
+}
 
 let group   = store.get('kds.group', 'table');   // table | time
 let filter  = 'all';
@@ -41,6 +57,12 @@ const CSS = `
 .tk.cxreq{border-color:var(--late);background:#fffafa;box-shadow:0 0 0 3px var(--late-soft),var(--shadow-2)}
 .tk.cxreq::before{background:var(--late)}
 .tk .top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.btien{
+  margin-left:7px;padding:2px 7px;border-radius:99px;
+  font-size:10.5px;font-weight:700;letter-spacing:.02em;vertical-align:middle;
+}
+.btien.ok{background:var(--ok-soft);color:var(--ok)}
+.btien.cho{background:var(--amber-soft);color:var(--warn)}
 .tk .tb{display:inline-flex;align-items:baseline;gap:5px;background:var(--brand-soft);color:var(--brand);
         padding:5px 12px;border-radius:9px;font-size:13px;font-weight:700}
 .tk .tb b{font-size:17px}
@@ -129,7 +151,8 @@ export function mountKds(root){
     if (g) return finishGroup(g.dataset.grp);
   };
 
-  onData(w => { if (w === 'orders' || w === 'menu'){ render(); if (w === 'orders') alertNew(); } });
+  // 'bills' cũng phải vẽ lại: bàn vừa trả tiền thì nhãn trên phiếu phải đổi ngay.
+  onData(w => { if (w === 'orders' || w === 'menu' || w === 'bills'){ render(); if (w === 'orders') alertNew(); } });
   render();
 
   setInterval(() => {
@@ -171,7 +194,7 @@ function ticket(o){
     : `<button class="done" data-done="${o.key}" ${b?'disabled':''}>${b?'⏳ Đang lưu…':'✓ Hoàn thành'}</button>`;
   return `<article class="tk ${req ? 'cxreq' : ageClass(ms)}" data-at="${o.at}">
     <div class="top">
-      <span class="tb">Bàn <b>${esc(o.table ?? '—')}</b></span>
+      <span class="tb">Bàn <b>${esc(o.table ?? '—')}</b>${nhanTien(o.table)}</span>
       <span class="rt"><span class="el">${fmtElapsed(ms)}</span><br>${esc(o.time || '')}</span>
     </div>
     <div class="mid">
@@ -217,7 +240,7 @@ function render(){
         const q = list.reduce((s,o)=>s+(Number(o.quantity)||1),0);
         const canBulk = list.filter(o => !isReq(o)).length > 1;
         return `<section class="kgrp">
-          <div class="kgrp-h"><span class="t">Bàn ${esc(k)}</span>
+          <div class="kgrp-h"><span class="t">Bàn ${esc(k)}${nhanTien(k)}</span>
             <span class="c">${list.length} món · ${q} ly</span><span class="r"></span>
             ${canBulk ? `<button class="kclear" data-grp="${esc(k)}">✓ Xong cả bàn</button>` : ''}</div>
           ${list.map(ticket).join('')}</section>`;

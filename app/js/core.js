@@ -5,12 +5,19 @@
    ========================================================================== */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import {
-  getDatabase, ref, push, remove, update, onValue,
+  getDatabase, ref, push, set, remove, update, onValue, runTransaction,
   onChildAdded, onChildChanged, onChildRemoved, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 import {
   getAuth, GoogleAuthProvider, signInWithPopup, signOut as fbSignOut, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import {
+  hoaDonCuaBan   as _hoaDonCuaBan,
+  hoaDonMoCuaBan as _hoaDonMoCuaBan,
+  mocDaChot      as _mocDaChot,
+  monChuaTinhTien as _monChuaTinhTien,
+  trangThaiBan   as _trangThaiBan,
+} from './phien.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAWgDT99kbQlTzOG76xVImqtu3tRGPfstI",
@@ -35,24 +42,12 @@ export function signOutUser(){
 export function onAuthChange(cb){
   return onAuthStateChanged(auth, cb);
 }
-export const FB  = { ref, push, remove, update, onValue, onChildAdded, onChildChanged, onChildRemoved, serverTimestamp };
+export const FB  = { ref, push, set, remove, update, onValue, runTransaction, onChildAdded, onChildChanged, onChildRemoved, serverTimestamp };
 
 export const ordersRef    = ref(db, 'orders');
 export const historyRef   = ref(db, 'history');
 export const cancelledRef = ref(db, 'cancelled');
 export const billsRef     = ref(db, 'bills');
-
-/* VietQR — điền thông tin ngân hàng khi có */
-export const VIETQR = {
-  bankId:      'BANK_ID',        // VD: '970422' (MB Bank)
-  accountNo:   'ACCOUNT_NO',    // số tài khoản
-  accountName: 'ACCOUNT_NAME',  // tên chủ tài khoản
-};
-export function vietQRUrl(amount, desc){
-  const { bankId, accountNo, accountName } = VIETQR;
-  return `https://img.vietqr.io/image/${bankId}-${accountNo}-compact2.png` +
-    `?amount=${Math.round(amount)}&addInfo=${encodeURIComponent(desc)}&accountName=${encodeURIComponent(accountName)}`;
-}
 
 /* Hai bảng Google Sheet: thực đơn (có cột Đơn giá) và công thức sơ chế */
 export const MENU_API = 'https://script.google.com/macros/s/AKfycbxRdkktSsPqkkiYUE9_lJfvqpnzQaKzn7xZ597jPpXaEfJWwWsy1xjgN9pCkRZSOCJl/exec';
@@ -196,6 +191,9 @@ export const audio = {
   },
   ding(){ this._tone(880, 0, .12); this._tone(1320, .13, .12); },          // đơn mới
   alarm(){ for (let i=0;i<3;i++) this._tone(440, i*.22, .17, 'square', .16); }, // xin hủy
+  // Tiền về: ba nốt đi lên, dài và êm hơn hẳn hai tiếng báo đơn mới. Thu ngân
+  // phải phân biệt được ngay mà không cần nhìn màn hình.
+  tienVe(){ [523,659,784].forEach((f,i) => this._tone(f, i*.15, .28, 'triangle', .2)); },
   buzz(){ if (navigator.vibrate) navigator.vibrate([30,40,30]); }
 };
 
@@ -253,7 +251,10 @@ export function initData(){
     data.orders = snapToArray(snap).map(({key, val:d}) => ({
       key, item: d.item, quantity: d.quantity, table: d.table, time: d.time,
       stt: d.stt ?? null, price: d.price ?? null,
-      cancel: d.cancel || null, at: parseClock(d.time)
+      cancel: d.cancel || null, at: parseClock(d.time),
+      // Giờ máy chủ — dùng để cắt phiên bàn. `at` suy từ "HH:MM" nên phụ thuộc
+      // đồng hồ của máy, không đủ tin để quyết định tiền.
+      sentAt: Number(d.sentAt) || null
     }));
     data.orders._prevCancel = prev;
     emit('orders');
@@ -274,7 +275,7 @@ export function initData(){
     emit('bills');
   }, () => { data.bills = []; emit('bills'); });
 
-  loadMenu(); loadPrep();
+  loadMenu(); loadPrep(); taiCauHinhQR();
 }
 
 /* ─────────────────── tải hai bảng Sheet ─────────────────── */
@@ -379,21 +380,133 @@ export function approveCancel(o){
   }).then(() => remove(ref(db, 'orders/' + o.key)));
 }
 
-export function saveBill(bill){
-  // bill: { table, items:[{name,stt,qty,price}], subtotal, discount, total, desc }
-  return push(billsRef, {
+/* ══════════════════════════════════════════════════════════════════════════
+   THANH TOÁN — VietQR, mã hóa đơn, phiên bàn
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ─────────────────── tài khoản nhận tiền ───────────────────
+   KHÔNG chép tay số tài khoản vào đây. Nó đã nằm trong biến môi trường của
+   Netlify cho app đặt món online; chép sang repo thứ hai là dựng đúng cái bẫy
+   đã dính hai lần ở dự án bên kia — và ở đây chép sai một chữ số là tiền chảy
+   sang tài khoản người lạ.
+
+   Hỏi máy chủ một lần rồi nhớ vào máy. Mất mạng thì dùng bản đã nhớ; chưa từng
+   hỏi được lần nào thì KHÔNG vẽ QR, hiện lời nhắc — một mã QR sai còn tệ hơn
+   không có mã nào. */
+const CAU_HINH_API = 'https://ghecauhai.netlify.app/api/cau-hinh-quan';
+
+export let VIETQR = store.get('vietqr', null);
+
+export async function taiCauHinhQR(){
+  try{
+    const j = await (await fetch(CAU_HINH_API)).json();
+    if (j && j.ok && j.bankId && j.accountNo){
+      VIETQR = { bankId: j.bankId, accountNo: j.accountNo, accountName: j.accountName || '' };
+      store.set('vietqr', VIETQR);
+      emit('vietqr');
+    }
+  }catch{
+    /* mất mạng — giữ bản đã nhớ trong máy */
+  }
+  return VIETQR;
+}
+
+/** Bỏ dấu và mọi ký tự ngân hàng có thể nuốt mất. Nội dung chỉ nên còn [A-Z0-9 ]. */
+export function sachNoiDung(t){
+  return String(t).normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/đ/g,'d').replace(/Đ/g,'D')
+    .replace(/[^A-Za-z0-9 ]/g,' ').replace(/\s+/g,' ').trim().toUpperCase().slice(0,50);
+}
+
+/** URL ảnh VietQR, hoặc null nếu chưa biết tài khoản nhận. */
+export function vietQRUrl(amount, desc){
+  if (!VIETQR || !VIETQR.bankId || !VIETQR.accountNo) return null;
+  const { bankId, accountNo, accountName } = VIETQR;
+  const qs = new URLSearchParams({ amount: String(Math.round(amount)), addInfo: sachNoiDung(desc) });
+  if (accountName) qs.set('accountName', sachNoiDung(accountName));
+  return `https://img.vietqr.io/image/${bankId}-${accountNo}-compact2.png?${qs}`;
+}
+
+/* ─────────────────── mã hóa đơn ───────────────────
+   QCH + yymmdd + 4 số. CÙNG hình dạng với mã đơn online (GCH…) nhưng khác tiền
+   tố, vì hai app đổ tiền vào CÙNG một tài khoản ACB: webhook SePay nhận cả hai
+   và phân biệt bằng đúng ba chữ cái này. Định dạng phải khớp với
+   lib/maHoaDon.mjs bên repo ghecauhai-website — đổi một bên là tiền không khớp
+   được vào hóa đơn nào.
+
+   Bộ đếm chạy bằng transaction của RTDB nên nguyên tử thật, và vẫn sinh được mã
+   khi mất mạng (Firebase xếp hàng gửi lại). Thu ngân giữa ca không chờ được một
+   lượt gọi mạng chỉ để có cái mã. */
+export const vnDateKey = (d = new Date()) => ymd(d).slice(2).replace(/-/g,'');
+
+export async function taoMaHoaDon(){
+  const ngay = vnDateKey();
+  const res = await runTransaction(ref(db, `counters/bills/${ngay}`), n => (Number(n) || 0) + 1);
+  const seq = Math.min(Math.max(Number(res.snapshot.val()) || 1, 1), 9999);
+  return `QCH${ngay}${String(seq).padStart(4,'0')}`;
+}
+
+/* ─────────────────── phiên bàn ───────────────────
+   Logic nằm ở phien.js — module thuần, không import Firebase, test được bằng
+   node --test. Ở đây chỉ buộc nó vào kho dữ liệu realtime `data`. */
+
+export { TRANG_THAI_BAN, mocCua } from './phien.js';
+
+export const hoaDonCuaBan   = tbl => _hoaDonCuaBan(data.bills, tbl);
+export const hoaDonMoCuaBan = tbl => _hoaDonMoCuaBan(data.bills, tbl);
+export const mocDaChot      = tbl => _mocDaChot(data.bills, tbl);
+
+export const monChuaTinhTien = (tbl, toiLuc = Infinity) =>
+  _monChuaTinhTien({ orders: data.orders, history: data.history, bills: data.bills, tbl, hnay: ymd(), toiLuc });
+
+export const trangThaiBan = tbl =>
+  _trangThaiBan({ orders: data.orders, history: data.history, bills: data.bills, tbl, hnay: ymd() });
+
+/* ─────────────────── ghi hóa đơn ─────────────────── */
+
+/**
+ * Tạo hóa đơn. Khóa của node CHÍNH LÀ mã hóa đơn (không dùng push):
+ * webhook tra cứu O(1) không cần `.indexOn`, và không thể có hai hóa đơn trùng mã.
+ */
+export async function saveBill(bill){
+  const code = await taoMaHoaDon();
+  await set(ref(db, 'bills/' + code), {
     ...bill,
+    code,
     status: 'unpaid',
+    paidAmount: 0,
+    // Mốc gom món. Lấy giờ MÁY CHỦ chứ không lấy giờ máy: mốc này đem so với
+    // `timestamp` của các dòng đơn (cũng là giờ máy chủ), lệch đồng hồ một
+    // chiếc điện thoại là phiên bàn tính sai.
+    tinhToiLuc: serverTimestamp(),
     createdAt: serverTimestamp(),
-    paidAt: null
+    paidAt: null,
+    paidBy: null,
+    payMethod: null,
+  });
+  return code;
+}
+
+/** Thu ngân nhận tiền mặt — hoặc tự đối chiếu app ngân hàng rồi bấm tay. */
+export function traTay(code, payMethod = 'tienmat'){
+  const b = data.bills.find(x => x.key === code);
+  return update(ref(db, 'bills/' + code), {
+    status: 'paid',
+    payMethod,
+    paidBy: 'nguoi',          // người bấm, không phải webhook — để còn đối soát
+    paidAmount: Number(b?.total) || 0,
+    paidAt: serverTimestamp(),
   });
 }
-export function updateBillStatus(key, status){
-  return update(ref(db, 'bills/' + key), {
-    status,
-    paidAt: status === 'paid' ? serverTimestamp() : null
+
+/** Mở lại hóa đơn đã đóng nhầm. Xóa sạch dấu vết đã trả để khỏi lệch sổ. */
+export function moLaiHoaDon(code){
+  return update(ref(db, 'bills/' + code), {
+    status: 'unpaid', payMethod: null, paidBy: null, paidAt: null, paidAmount: 0,
   });
 }
+
+export const xoaHoaDon = code => remove(ref(db, 'bills/' + code));
 
 /* ─────────────────── giữ màn hình không tắt (cho quầy pha chế) ─────────────────── */
 let wakeLock = null;
