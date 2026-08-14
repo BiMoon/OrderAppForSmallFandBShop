@@ -40,6 +40,19 @@ export const FB  = { ref, push, remove, update, onValue, onChildAdded, onChildCh
 export const ordersRef    = ref(db, 'orders');
 export const historyRef   = ref(db, 'history');
 export const cancelledRef = ref(db, 'cancelled');
+export const billsRef     = ref(db, 'bills');
+
+/* VietQR — điền thông tin ngân hàng khi có */
+export const VIETQR = {
+  bankId:      'BANK_ID',        // VD: '970422' (MB Bank)
+  accountNo:   'ACCOUNT_NO',    // số tài khoản
+  accountName: 'ACCOUNT_NAME',  // tên chủ tài khoản
+};
+export function vietQRUrl(amount, desc){
+  const { bankId, accountNo, accountName } = VIETQR;
+  return `https://img.vietqr.io/image/${bankId}-${accountNo}-compact2.png` +
+    `?amount=${Math.round(amount)}&addInfo=${encodeURIComponent(desc)}&accountName=${encodeURIComponent(accountName)}`;
+}
 
 /* Hai bảng Google Sheet: thực đơn (có cột Đơn giá) và công thức sơ chế */
 export const MENU_API = 'https://script.google.com/macros/s/AKfycbxRdkktSsPqkkiYUE9_lJfvqpnzQaKzn7xZ597jPpXaEfJWwWsy1xjgN9pCkRZSOCJl/exec';
@@ -198,11 +211,12 @@ function snapToArray(snap){
 
 const listeners = new Set();
 export const data = {
-  orders: [],       // [{key, item, quantity, table, time, stt, price, cancel, at}]
-  history: [],      // bản ghi thô
+  orders: [],
+  history: [],
   cancelled: [],
-  menu: [],         // thực đơn từ Sheet
-  prep: [],         // công thức sơ chế từ Sheet
+  bills: [],
+  menu: [],
+  prep: [],
   online: false,
   menuLoaded: false,
   prepLoaded: false,
@@ -253,7 +267,12 @@ export function initData(){
   onValue(cancelledRef, snap => {
     data.cancelled = snapToArray(snap).map(x => x.val);
     emit('cancelled');
-  }, () => { data.cancelled = []; emit('cancelled'); });   // nhánh có thể chưa tồn tại
+  }, () => { data.cancelled = []; emit('cancelled'); });
+
+  onValue(billsRef, snap => {
+    data.bills = snapToArray(snap).map(({key, val:v}) => ({ key, ...v }));
+    emit('bills');
+  }, () => { data.bills = []; emit('bills'); });
 
   loadMenu(); loadPrep();
 }
@@ -358,6 +377,22 @@ export function approveCancel(o){
     cancelledYear: d.substring(0,4),
     timestamp: serverTimestamp()
   }).then(() => remove(ref(db, 'orders/' + o.key)));
+}
+
+export function saveBill(bill){
+  // bill: { table, items:[{name,stt,qty,price}], subtotal, discount, total, desc }
+  return push(billsRef, {
+    ...bill,
+    status: 'unpaid',
+    createdAt: serverTimestamp(),
+    paidAt: null
+  });
+}
+export function updateBillStatus(key, status){
+  return update(ref(db, 'bills/' + key), {
+    status,
+    paidAt: status === 'paid' ? serverTimestamp() : null
+  });
 }
 
 /* ─────────────────── giữ màn hình không tắt (cho quầy pha chế) ─────────────────── */

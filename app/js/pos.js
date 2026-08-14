@@ -4,9 +4,10 @@
    Chọn món → Giỏ hàng → Chưa pha xong. Dải bàn luôn nằm trên cùng.
    ========================================================================== */
 import {
-  el, esc, rxEsc, money, hm, fmtElapsed, ageClass, nf,
+  el, esc, rxEsc, money, hm, fmtElapsed, ageClass, nf, ymd,
   TABLES, CANCEL_REASONS, data, onData, findMenuItem, nameOf, priceOf,
-  sendOrders, requestCancel, clearCancel,
+  sendOrders, requestCancel, clearCancel, saveBill, updateBillStatus, vietQRUrl,
+  db, FB,
   toast, sheet, closeSheet, store, audio
 } from './core.js';
 
@@ -32,6 +33,7 @@ function shell(){
     <button data-v="entry">Chọn món</button>
     <button data-v="cart">Giỏ <span class="c" id="vcCart">0</span></button>
     <button data-v="pending">Chờ pha <span class="c" id="vcPend">0</span></button>
+    <button data-v="bill">💳 Hóa đơn <span class="c" id="vcBill">0</span></button>
   </div>
 
   <!-- ══ CHỌN MÓN ══ -->
@@ -81,6 +83,15 @@ function shell(){
       <button class="btn sm" id="posScope">Bàn ${table}</button>
     </div>
     <div id="posPendList"></div>
+  </div>
+
+  <!-- ══ HÓA ĐƠN ══ -->
+  <div id="posBill" class="hide">
+    <div class="row" style="margin-bottom:12px">
+      <div class="sec-label" style="margin:0;flex:1" id="posBillNote"></div>
+      <button class="btn sm solid" id="posBillNew">✚ Tạo hóa đơn</button>
+    </div>
+    <div id="posBillList"></div>
   </div>`;
 }
 
@@ -258,6 +269,45 @@ const CSS = `
   text-transform:uppercase;letter-spacing:.07em;
 }
 .tot .v{font-size:24px;font-weight:800;letter-spacing:-.02em;color:var(--brand-dark)}
+.bill-card{
+  background:var(--surface);border:1.5px solid var(--line);
+  border-radius:16px;box-shadow:var(--shadow-1);margin-bottom:12px;overflow:hidden;
+}
+.bill-card.paid{border-color:var(--ok);opacity:.75}
+.bill-head{
+  display:flex;align-items:center;gap:10px;
+  padding:12px 14px;border-bottom:1px solid var(--line);
+  background:var(--surface-2);
+}
+.bill-head .tbl{font-size:16px;font-weight:800;color:var(--ink)}
+.bill-head .time{font-size:11.5px;color:var(--ink-3);flex:1}
+.bill-status{
+  font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px;
+  text-transform:uppercase;letter-spacing:.05em;
+}
+.bill-status.unpaid{background:var(--warn-soft);color:var(--warn)}
+.bill-status.paid{background:var(--ok-soft);color:var(--ok)}
+.bill-items{padding:10px 14px}
+.bill-row{
+  display:flex;align-items:baseline;gap:8px;
+  padding:5px 0;border-bottom:1px dashed var(--line);font-size:13.5px;
+}
+.bill-row:last-child{border-bottom:0}
+.bill-row .bn{flex:1;min-width:0;font-weight:500}
+.bill-row .bq{color:var(--ink-3);font-size:12px;white-space:nowrap}
+.bill-row .bp{font-weight:700;color:var(--ink);white-space:nowrap;font-variant-numeric:tabular-nums}
+.bill-foot{
+  padding:10px 14px;border-top:1px solid var(--line);
+  background:var(--surface-2);
+}
+.bill-foot-row{display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;color:var(--ink-2)}
+.bill-foot-row.total{font-size:17px;font-weight:800;color:var(--ink);margin-bottom:0}
+.bill-foot-row.discount{color:var(--ok)}
+.bill-qr{padding:14px;display:flex;flex-direction:column;align-items:center;gap:8px;border-top:1px solid var(--line)}
+.bill-qr img{width:180px;height:180px;border-radius:12px;border:1px solid var(--line)}
+.bill-qr .qr-note{font-size:12px;color:var(--ink-3);text-align:center}
+.bill-acts{display:flex;gap:8px;padding:0 14px 14px}
+.bill-acts .btn{flex:1;min-height:44px;font-size:13.5px}
 `;
 
 /* ─────────────────── khởi tạo ─────────────────── */
@@ -272,6 +322,7 @@ export function mountPos(root){
   onData(w => {
     if (w === 'orders'){ renderTables(); renderPending(); notifyRejects(); }
     if (w === 'menu')  { renderMenu(); preview(); }
+    if (w === 'bills') { renderBillList(); }
   });
   setView(view); setTab(tab); renderAll();
 
@@ -380,8 +431,18 @@ function bind(){
     const key = b.dataset.k;
     if (b.dataset.a === 'req')  return cancelSheet(key);
     if (b.dataset.a === 'undo') return clearCancel(key)
-      .then(()=>toast('Đã thu hồi yêu cầu hủy','ok')).catch(fail);
+      .then(()=>toast('Da thu hoi yeu cau huy','ok')).catch(fail);
     if (b.dataset.a === 'ack')  return clearCancel(key).catch(fail);
+  };
+  el('posBillNew').onclick = () => newBillSheet();
+  el('posBillList').onclick = e => {
+    const b = e.target.closest('[data-bill-pay]');
+    if (b) return payBill(b.dataset.billPay);
+    const u = e.target.closest('[data-bill-unpay]');
+    if (u) return updateBillStatus(u.dataset.billUnpay, 'unpaid')
+      .then(()=>toast('Da chuyen ve chua thanh toan')).catch(fail);
+    const d = e.target.closest('[data-bill-del]');
+    if (d) return deleteBillSheet(d.dataset.billDel);
   };
 }
 const fail = e => { console.error(e); toast('Không gửi được — kiểm tra quyền ghi (.write)','err'); };
@@ -392,6 +453,8 @@ function setView(v){
   el('posEntry').classList.toggle('hide', v !== 'entry');
   el('posCart').classList.toggle('hide', v !== 'cart');
   el('posPending').classList.toggle('hide', v !== 'pending');
+  el('posBill').classList.toggle('hide', v !== 'bill');
+  if (v === 'bill') renderBillList();
 }
 function setTab(t){
   tab = t;
@@ -632,5 +695,170 @@ function notifyRejects(){
   });
 }
 
-export function renderAll(){ renderTables(); renderCart(); renderPending(); }
+export function renderAll(){ renderTables(); renderCart(); renderPending(); renderBillList(); }
 export const posBadge = () => cart.reduce((s,o)=>s+o.qty,0);
+
+/* ─────────────────── HÓA ĐƠN ─────────────────── */
+function billItemsForTable(tbl){
+  const pending = data.orders
+    .filter(o => o.table == tbl)
+    .map(o => ({ name: o.item, stt: o.stt, qty: Number(o.quantity)||1, price: o.price, status:'pending' }));
+  const today = ymd();
+  const done = data.history
+    .filter(h => h.table == tbl && h.completedDate === today)
+    .map(h => ({ name: h.item, stt: h.stt, qty: Number(h.quantity)||1, price: h.price, status:'done' }));
+  return [...pending, ...done];
+}
+
+function newBillSheet(){
+  const tables = [...new Set([
+    ...data.orders.map(o => o.table),
+    ...data.history.filter(h => h.completedDate === ymd()).map(h => h.table)
+  ])].filter(Boolean).sort((a,b) => (+a||999)-(+b||999));
+
+  let selTable = table;
+  let discount = 0;
+
+  const refreshPreview = () => {
+    const items = billItemsForTable(selTable);
+    const subtotal = items.reduce((s,i) => s + (i.price||0)*i.qty, 0);
+    const discAmt  = Math.round(subtotal * discount / 100);
+    const total    = subtotal - discAmt;
+    const box = el('nbPreview'); if (!box) return;
+    box.innerHTML = items.length
+      ? items.map(i => `<div class="bill-row">
+          <span class="bn">${esc(i.name)}${i.status==='pending' ? ' <span style="color:var(--warn);font-size:11px">(chờ pha)</span>' : ''}</span>
+          <span class="bq">${i.qty} ly</span>
+          <span class="bp">${i.price != null ? money(i.price*i.qty) : '—'}</span>
+        </div>`).join('')
+        + `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">
+            <div class="bill-foot-row"><span>Tạm tính</span><span>${money(subtotal)}</span></div>
+            ${discount ? `<div class="bill-foot-row discount"><span>Giảm ${discount}%</span><span>-${money(discAmt)}</span></div>` : ''}
+            <div class="bill-foot-row total"><span>Tổng</span><span>${money(total)}</span></div>
+          </div>`
+      : '<p style="color:var(--ink-3);font-size:13.5px">Bàn này chưa có món nào hôm nay.</p>';
+  };
+
+  sheet({
+    title: 'Tạo hóa đơn',
+    body: `
+      <div class="sec-label" style="margin-top:0">Chọn bàn</div>
+      <div class="chiprow" id="nbTables">
+        ${tables.map(t => `<button class="chip ${t==selTable?'active':''}" data-t="${t}">Bàn ${t}</button>`).join('')}
+      </div>
+      <div class="sec-label">Khuyến mãi (%)</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <input type="range" id="nbDiscount" min="0" max="100" step="5" value="0"
+          style="flex:1;min-height:0;padding:0;border:0;background:none;accent-color:var(--brand)">
+        <span id="nbDiscVal" style="min-width:40px;text-align:right;font-size:16px;font-weight:700;color:var(--brand)">0%</span>
+      </div>
+      <div class="sec-label">Chi tiết</div>
+      <div id="nbPreview"></div>`,
+    actions:[
+      { label: 'Hủy' },
+      { label: 'Tạo & hiển thị QR', cls: 'solid', keepOpen: true, onClick(){
+          const items = billItemsForTable(selTable);
+          if (!items.length) return toast('Bàn này chưa có món', 'err');
+          const subtotal = items.reduce((s,i) => s+(i.price||0)*i.qty, 0);
+          const discAmt  = Math.round(subtotal * discount / 100);
+          const total    = subtotal - discAmt;
+          const desc     = `Ban ${selTable} ${ymd()}`;
+          saveBill({ table: selTable, items, subtotal, discount, discAmt, total, desc })
+            .then(() => { closeSheet(); setView('bill'); toast('Da tao hoa don', 'ok'); })
+            .catch(fail);
+        }
+      }
+    ]
+  });
+
+  setTimeout(() => {
+    refreshPreview();
+    const nbT = el('nbTables');
+    if (nbT) nbT.onclick = e => {
+      const b = e.target.closest('.chip'); if (!b) return;
+      selTable = +b.dataset.t;
+      [...nbT.children].forEach(x => x.classList.toggle('active', +x.dataset.t === selTable));
+      refreshPreview();
+    };
+    const sl = el('nbDiscount');
+    if (sl) sl.oninput = () => {
+      discount = +sl.value;
+      el('nbDiscVal').textContent = discount + '%';
+      refreshPreview();
+    };
+  }, 50);
+}
+
+function renderBillList(){
+  const box = el('posBillList'); if (!box) return;
+  const bills = [...data.bills].sort((a,b) => (b.createdAt||0)-(a.createdAt||0));
+  const unpaid = bills.filter(b => b.status !== 'paid').length;
+  const noteEl = el('posBillNote');
+  if (noteEl) noteEl.textContent = bills.length ? `${bills.length} hóa đơn · ${unpaid} chưa thanh toán` : '';
+  const vcBill = el('vcBill');
+  if (vcBill) vcBill.textContent = unpaid || '';
+
+  if (!bills.length){
+    box.innerHTML = `<div class="empty"><div class="ic">💳</div>
+      <h3>Chưa có hóa đơn</h3><p>Bấm “Tạo hóa đơn” để xuất QR thanh toán.</p></div>`;
+    return;
+  }
+
+  box.innerHTML = bills.map(b => {
+    const paid = b.status === 'paid';
+    const qrUrl = vietQRUrl(b.total, b.desc || `Ban ${b.table}`);
+    const timeStr = b.createdAt ? new Date(b.createdAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'}) : '';
+    return `<div class="bill-card ${paid ? 'paid' : ''}">
+      <div class="bill-head">
+        <span class="tbl">Bàn ${esc(b.table)}</span>
+        <span class="time">${timeStr}</span>
+        <span class="bill-status ${paid ? 'paid' : 'unpaid'}">${paid ? '✅ Đã thanh toán' : '⏳ Chưa thanh toán'}</span>
+      </div>
+      <div class="bill-items">
+        ${(b.items||[]).map(i => `<div class="bill-row">
+          <span class="bn">${esc(i.name)}</span>
+          <span class="bq">${i.qty} ly</span>
+          <span class="bp">${i.price != null ? money(i.price*i.qty) : '—'}</span>
+        </div>`).join('')}
+      </div>
+      <div class="bill-foot">
+        <div class="bill-foot-row"><span>Tạm tính</span><span>${money(b.subtotal)}</span></div>
+        ${b.discount ? `<div class="bill-foot-row discount"><span>Giảm ${b.discount}%</span><span>-${money(b.discAmt)}</span></div>` : ''}
+        <div class="bill-foot-row total"><span>Tổng cộng</span><span>${money(b.total)}</span></div>
+      </div>
+      ${!paid ? `<div class="bill-qr">
+        <img src="${esc(qrUrl)}" alt="QR thanh toán" loading="lazy">
+        <div class="qr-note">Quét mã để thanh toán ${money(b.total)}</div>
+      </div>` : ''}
+      <div class="bill-acts">
+        ${!paid
+          ? `<button class="btn solid" data-bill-pay="${b.key}">✅ Xác nhận đã thanh toán</button>`
+          : `<button class="btn" data-bill-unpay="${b.key}">↩ Hoàn tác</button>`
+        }
+        <button class="btn danger" data-bill-del="${b.key}">🗑</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function payBill(key){
+  updateBillStatus(key, 'paid')
+    .then(() => toast('Đã thanh toán!', 'ok'))
+    .catch(fail);
+}
+
+function deleteBillSheet(key){
+  sheet({
+    title: 'Xóa hóa đơn?',
+    desc: 'Hóa đơn sẽ bị xóa vĩnh viễn.',
+    actions:[
+      { label: 'Giữ lại' },
+      { label:'Xóa', cls:'solid danger', onClick(){
+          FB.remove(FB.ref(db, 'bills/' + key))
+            .then(() => toast('Đã xóa hóa đơn'))
+            .catch(fail);
+        }
+      }
+    ]
+  });
+}
