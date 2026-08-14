@@ -2,28 +2,33 @@
   "_ĐỌC_TRƯỚC_KHI_DÙNG": [
     "Đây là bản ĐỀ NGHỊ, không phải bản đang chạy.",
     "",
-    "Đo được ngày 14/08/2026: gọi REST không đăng nhập vào /orders.json và",
-    "/bills.json đều trả 401, nghĩa là rules hiện tại ĐÃ đòi đăng nhập.",
-    "Nên bản dưới đây giữ nguyên tinh thần đó, chỉ THÊM hai nhánh bills và",
-    "counters.",
+    "QUAN TRỌNG NHẤT: chỗ nào ghi <<ĐIỀU KIỆN ĐANG DÙNG>> thì DÁN ĐÚNG điều",
+    "kiện đang có ở nhánh `orders` trong Console — nghe nói là dạng",
+    "  auth != null && auth.token.email == 'email-cua-quan@gmail.com'",
+    "Đừng thay bằng `auth != null` cho gọn: `bills` chứa doanh thu, để lỏng",
+    "hơn phần còn lại của database là BẤT KỲ tài khoản Google nào trên đời",
+    "cũng đọc được sổ tiền của quán.",
     "",
-    "VẪN PHẢI ĐỐI CHIẾU với bản trong Firebase Console trước khi dán đè:",
+    "Đo được 14/08/2026: gọi REST không đăng nhập vào /orders.json và",
+    "/bills.json đều trả 401 — rules hiện tại đã đòi đăng nhập.",
+    "",
+    "Đối chiếu với bản trong Console trước khi dán:",
     "console.firebase.google.com/project/quanlyphachequan/database/quanlyphachequan-default-rtdb/rules",
-    "Nếu bản trong Console có nhánh nào không có ở đây, GIỮ LẠI nhánh đó.",
+    "Nhánh nào có trong Console mà không có ở đây thì GIỮ LẠI.",
     "",
     "Webhook SePay ghi bằng Admin SDK nên BỎ QUA toàn bộ file này — siết chặt",
     "tới đâu cũng không chặn được đường tiền tự động."
   ],
 
   "rules": {
-    "orders":    { ".read": "auth != null", ".write": "auth != null" },
-    "history":   { ".read": "auth != null", ".write": "auth != null" },
-    "cancelled": { ".read": "auth != null", ".write": "auth != null" },
+    "orders":    { ".read": "<<ĐIỀU KIỆN ĐANG DÙNG>>", ".write": "<<ĐIỀU KIỆN ĐANG DÙNG>>" },
+    "history":   { ".read": "<<ĐIỀU KIỆN ĐANG DÙNG>>", ".write": "<<ĐIỀU KIỆN ĐANG DÙNG>>" },
+    "cancelled": { ".read": "<<ĐIỀU KIỆN ĐANG DÙNG>>", ".write": "<<ĐIỀU KIỆN ĐANG DÙNG>>" },
 
     "bills": {
-      ".read": "auth != null",
+      ".read": "<<ĐIỀU KIỆN ĐANG DÙNG>>",
       "$ma": {
-        ".write": "auth != null",
+        ".write": "<<ĐIỀU KIỆN ĐANG DÙNG>>",
 
         "//": [
           "Khóa PHẢI là mã hóa đơn đúng dạng QCH+10 số. Chặn luôn chuyện một",
@@ -42,9 +47,9 @@
 
     "counters": {
       "bills": {
-        ".read": "auth != null",
+        ".read": "<<ĐIỀU KIỆN ĐANG DÙNG>>",
         "$ngay": {
-          ".write": "auth != null",
+          ".write": "<<ĐIỀU KIỆN ĐANG DÙNG>>",
           "//": "Chỉ được tăng đúng 1. Máy khách không nhảy cóc số thứ tự được.",
           ".validate": "newData.isNumber() && (data.exists() ? newData.val() === data.val() + 1 : newData.val() === 1)"
         }
