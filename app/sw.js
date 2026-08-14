@@ -6,11 +6,14 @@
    • Firebase Realtime Database: KHÔNG cache — dữ liệu phải luôn tươi và
      bản thân SDK đã tự xử lý hàng đợi khi mất mạng.
    ========================================================================== */
-const VERSION = 'v1.0.1';
+const VERSION = 'v1.1.0';
 const SHELL   = 'phache-shell-' + VERSION;
 const SHEETS  = 'phache-sheets-' + VERSION;
 const SDK     = 'phache-sdk-' + VERSION;
 
+/* Mọi file trong app/js PHẢI có mặt ở đây. Thiếu một cái là app vẫn chạy khi
+   online (rơi xuống mạng) nhưng chết câm khi mất sóng — kiểu lỗi chỉ lộ ra ở
+   quán, đúng lúc wifi chập. test/sw.test.mjs canh danh sách này khỏi lệch. */
 const SHELL_FILES = [
   './',
   './index.html',
@@ -22,6 +25,11 @@ const SHELL_FILES = [
   './js/kds.js',
   './js/prep.js',
   './js/report.js',
+  './js/phien.js',
+  './js/thucThu.js',
+  './js/escpos.js',
+  './js/hoaDonBoCuc.js',
+  './js/inHoaDon.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/maskable-192.png',

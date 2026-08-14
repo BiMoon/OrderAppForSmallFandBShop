@@ -12,6 +12,8 @@ import {
   db, FB,
   toast, sheet, closeSheet, store, audio
 } from './core.js';
+import { inHoaDon, cauHinhIn, luuCauHinhIn, CACH_GUI } from './inHoaDon.js';
+import { KHO } from './escpos.js';
 
 let table    = store.get('pos.table', 1);
 let tab      = 'pad';          // pad | menu
@@ -91,6 +93,7 @@ function shell(){
   <div id="posBill" class="hide">
     <div class="row" style="margin-bottom:12px">
       <div class="sec-label" style="margin:0;flex:1" id="posBillNote"></div>
+      <button class="btn sm" id="posBillIn" title="Cài đặt máy in">🖨</button>
       <button class="btn sm solid" id="posBillNew">✚ Tạo hóa đơn</button>
     </div>
     <div id="posBillList"></div>
@@ -498,9 +501,12 @@ function bind(){
       .then(()=>toast('Đã chuyển về chưa thanh toán')).catch(fail);
     const d = e.target.closest('[data-bill-del]');
     if (d) return deleteBillSheet(d.dataset.billDel);
+    const p = e.target.closest('[data-bill-in]');
+    if (p) return inMotHoaDon(p.dataset.billIn, p);
     if (e.target.closest('[data-bill-cauhinh]'))
       return taiCauHinhQR().then(() => { renderBillList(); toast('Đã tải lại cấu hình'); });
   };
+  el('posBillIn').onclick = () => cauHinhInSheet();
 }
 const fail = e => { console.error(e); toast('Không gửi được — kiểm tra quyền ghi (.write)','err'); };
 
@@ -935,10 +941,119 @@ function renderBillList(){
              <button class="btn" data-bill-manual="${b.code}">🏦 Chuyển khoản</button>`
           : `<button class="btn" data-bill-unpay="${b.code}">↩ Hoàn tác</button>`
         }
+        ${cauHinhIn().bat
+          ? `<button class="btn" data-bill-in="${b.code}">🖨 ${daIn.has(b.code) ? 'In lại' : 'In'}</button>` : ''}
         <button class="btn danger" data-bill-del="${b.code}">🗑</button>
       </div>
     </div>`;
   }).join('');
+}
+
+/* ─────────────────── in hóa đơn ───────────────────
+
+   `daIn` chỉ sống trong phiên, không lưu xuống máy: nó chỉ để đổi chữ nút
+   thành "In lại". Nhớ dai qua các lần mở app thì thu ngân mở máy buổi sáng đã
+   thấy "In lại" cho hóa đơn chưa từng in ra tờ nào. */
+const daIn = new Set();
+
+async function inMotHoaDon(code, nut){
+  const b = data.bills.find(x => (x.code || x.key) === code);
+  if (!b) return toast('Không thấy hóa đơn này', 'err');
+  // Khóa nút ngay: vẽ raster mất vài trăm mili giây, và bấm hai lần trong lúc
+  // đó là hai tờ giấy giống hệt nhau nằm trên quầy.
+  if (nut){ nut.disabled = true; nut.textContent = '🖨 …'; }
+  try{
+    // QR chỉ in khi CHƯA trả. Hóa đơn đã thu rồi mà còn kèm mã quét là mời
+    // khách chuyển thêm lần nữa.
+    const qr = b.status === 'paid'
+      ? null
+      : vietQRUrl(Math.max(0, (Number(b.total) || 0) - (Number(b.paidAmount) || 0)) || b.total,
+                  b.code || `BAN ${b.table}`);
+    await inHoaDon(b, { qr, inLai: daIn.has(code), nganKeo: b.payMethod === 'tienmat' });
+    daIn.add(code);
+    toast('Đã gửi tới máy in', 'ok');
+  }catch(e){
+    console.error(e);
+    toast(e.message || 'Không in được', 'err');
+  }finally{
+    renderBillList();
+  }
+}
+
+function cauHinhInSheet(){
+  const c = cauHinhIn();
+  const o = (v, ten, dang) => `<option value="${v}" ${dang===v?'selected':''}>${ten}</option>`;
+  sheet({
+    title: 'Máy in hóa đơn',
+    desc: 'Hóa đơn được in dưới dạng ẢNH nên tiếng Việt có dấu đầy đủ. Máy in nhiệt rẻ hầu như không có bảng mã tiếng Việt, in chữ thẳng là mất dấu.',
+    body: `
+      <label class="cong-tac" style="display:flex;gap:12px;align-items:flex-start;padding:12px 0">
+        <input type="checkbox" id="inBat" ${c.bat ? 'checked' : ''} style="width:20px;height:20px;flex:none">
+        <span><b>Bật nút In trên thẻ hóa đơn</b>
+          <em style="display:block;color:var(--ink-3);font-size:12.5px;margin-top:3px">Tắt thì màn hóa đơn gọn như cũ.</em></span>
+      </label>
+
+      <div class="sec-label">Khổ giấy</div>
+      <select id="inKho">${Object.entries(KHO).map(([k,v]) => o(k, v.nhan, c.kho)).join('')}</select>
+
+      <div class="sec-label">Cách gửi tới máy in</div>
+      <select id="inCach">${Object.entries(CACH_GUI).map(([k,v]) => o(k, v.nhan, c.cach)).join('')}</select>
+      <p id="inCachTa" style="color:var(--ink-3);font-size:12.5px;line-height:1.5;margin-top:6px"></p>
+
+      <div id="inCauNoiWrap" class="hide">
+        <div class="sec-label">Địa chỉ cầu nối</div>
+        <input type="url" id="inCauNoi" value="${esc(c.cauNoi)}" placeholder="http://192.168.1.50:9110"
+               autocomplete="off" inputmode="url">
+        <p style="color:var(--ink-3);font-size:12.5px;line-height:1.5;margin-top:6px">
+          Chạy <code>node tools/cau-noi-in.mjs --may=IP-máy-in</code> trên một máy luôn bật.
+          Cần Chrome ≥142 trên máy ở quầy.</p>
+      </div>
+
+      <div class="sec-label">Tên quán in trên hóa đơn</div>
+      <input type="text" id="inTen" value="${esc(c.tenQuan)}" autocomplete="off">
+      <div class="sec-label">Địa chỉ / số điện thoại (để trống thì bỏ qua)</div>
+      <input type="text" id="inDiaChi" value="${esc(c.diaChi)}" autocomplete="off">
+
+      <label class="cong-tac" style="display:flex;gap:12px;align-items:flex-start;padding:12px 0">
+        <input type="checkbox" id="inNganKeo" ${c.nganKeo ? 'checked' : ''} style="width:20px;height:20px;flex:none">
+        <span><b>Đá ngăn kéo tiền khi thu tiền mặt</b>
+          <em style="display:block;color:var(--ink-3);font-size:12.5px;margin-top:3px">Chỉ khi ngăn kéo cắm vào cổng RJ11 sau máy in.</em></span>
+      </label>`,
+    actions: [
+      { label: 'Đóng' },
+      { label: 'In thử', keepOpen: true, onClick(){ luuTuForm(); inThu(); } },
+      { label: 'Lưu', cls: 'solid', onClick(){ luuTuForm(); renderBillList(); toast('Đã lưu cài đặt máy in','ok'); } },
+    ],
+  });
+
+  const dongBo = () => {
+    const cach = el('inCach').value;
+    el('inCachTa').textContent = CACH_GUI[cach]?.ta ?? '';
+    el('inCauNoiWrap').classList.toggle('hide', cach !== 'caunoi');
+  };
+  setTimeout(() => { if (el('inCach')){ el('inCach').onchange = dongBo; dongBo(); } }, 50);
+}
+
+function luuTuForm(){
+  luuCauHinhIn({
+    bat: el('inBat').checked,
+    kho: el('inKho').value,
+    cach: el('inCach').value,
+    cauNoi: el('inCauNoi')?.value || cauHinhIn().cauNoi,
+    tenQuan: el('inTen').value.trim() || 'GHÉ CẬU HAI',
+    diaChi: el('inDiaChi').value.trim(),
+    nganKeo: el('inNganKeo').checked,
+  });
+}
+
+/** Hóa đơn giả để thử máy in mà không phải tạo hóa đơn thật cho một bàn nào. */
+function inThu(){
+  inHoaDon({
+    code: 'IN-THU', table: '—', status: 'unpaid',
+    items: [{ name: 'Thử máy in — tiếng Việt có dấu đủ chưa?', qty: 1, price: 0 }],
+    subtotal: 0, discount: 0, discAmt: 0, total: 0, paidAmount: 0,
+  }, {}).then(n => toast(`Đã gửi ${(n/1024).toFixed(0)}KB tới máy in`, 'ok'))
+        .catch(e => { console.error(e); toast(e.message || 'Không in được', 'err'); });
 }
 
 /* ─────────────────── chuông báo tiền về ───────────────────
