@@ -229,8 +229,7 @@ export function initData(){
   onValue(ref(db, '.info/connected'), s => {
     data.online = s.val() === true;
     const c = el('conn'), o = el('offbar');
-    if (c){ c.className = 'conn ' + (data.online ? 'online' : 'offline');
-            el('connTxt').textContent = data.online ? 'Trực tuyến' : 'Mất mạng'; }
+    if (c){ c.className = 'conn ' + (data.online ? 'online' : 'offline'); }
     if (o) o.classList.toggle('show', !data.online);
     emit('conn');
   });

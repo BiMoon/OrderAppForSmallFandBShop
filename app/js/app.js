@@ -144,11 +144,20 @@ el('btnMore').onclick = () => {
     Promise.all([loadMenu(), loadPrep()]).then(() =>
       toast(`Đã tải ${data.menu.length} món · ${data.prep.length} công thức`,'ok'));
   };
-  if (deferredPrompt){
-    el('stInstallWrap').innerHTML =
-      `<button class="btn solid block mt12" data-install>📲 Cài lên máy như một app</button>`;
-  }
+  el('stInstallWrap').innerHTML = installHTML();
 };
+
+function installHTML(){
+  const isStandalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  if (isStandalone)
+    return '<div class="lblbox mt12" style="font-size:12.5px;color:var(--ink-2);background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:12px 14px">✅ App đã được cài trên thiết bị này.</div>';
+  if (deferredPrompt)
+    return '<button class="btn solid block mt12" data-install>📲 Cài lên máy như một app</button>';
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if (isIOS)
+    return '<div class="lblbox mt12" style="font-size:12.5px;line-height:1.7;color:var(--ink-2);background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:12px 14px">📲 <b>Cài trên iOS:</b> Bấm nút <b>Chia sẻ ⎙</b> ở thanh Safari, rồi chọn <b>"Thêm vào Màn hình chính"</b>.</div>';
+  return '<div class="lblbox mt12" style="font-size:12.5px;line-height:1.7;color:var(--ink-2);background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:12px 14px">📲 <b>Cài trên Android / Chrome:</b> Mở menu <b>⋮</b> của trình duyệt, chọn <b>"Thêm vào Màn hình chính"</b> hoặc <b>"Cài đặt ứng dụng"</b>.</div>';
+}
 
 /* ─────────────────── cài đặt PWA ─────────────────── */
 let deferredPrompt = null;
@@ -214,7 +223,6 @@ onAuthChange(user => {
   if (!user){ location.replace('../index.html'); return; }
   el('userAvatar').src = user.photoURL || '';
   el('userAvatar').hidden = !user.photoURL;
-  el('userName').textContent = user.displayName || user.email || '';
   el('btnLogout').hidden = false;
 });
 

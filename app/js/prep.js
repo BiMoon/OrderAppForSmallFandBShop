@@ -44,12 +44,13 @@ const CSS = `
 .batch .lb{font-size:12px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em}
 .batch input[type=range]{flex:1;min-height:0;padding:0;border:0;background:none;accent-color:var(--brand)}
 .batch .vv{min-width:48px;text-align:center;font-size:19px;font-weight:700;color:var(--brand)}
-.ing{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
-     padding:11px 0;border-bottom:1px dashed var(--line)}
+.ing{display:flex;align-items:flex-start;gap:10px;
+     padding:10px 0;border-bottom:1px dashed var(--line)}
 .ing:last-child{border-bottom:0}
-.ing .n{font-size:14.5px;font-weight:600;flex:1;min-width:0}
-.ing .a{font-size:15px;font-weight:700;color:var(--brand);font-variant-numeric:tabular-nums;
-        white-space:nowrap;text-align:right}
+.ing .dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--brand);margin-top:7px}
+.ing .n{flex:1;min-width:0;font-size:14.5px;line-height:1.55;word-break:break-word}
+.ing .n b{font-weight:700;color:var(--ink)}
+.ing .n span{color:var(--ink-2)}
 .stp{display:flex;gap:12px;padding:11px 0;border-bottom:1px dashed var(--line)}
 .stp:last-child{border-bottom:0}
 .stp .i{flex:none;width:26px;height:26px;border-radius:8px;background:var(--brand);color:#fff;
@@ -260,19 +261,30 @@ function scale(line, m){
     return Number.isInteger(v) ? String(v) : v.toFixed(1).replace('.',',');
   });
 }
+function splitIngredients(raw){
+  // tách theo newline trước, sau đó tách tiếp các câu dài trong cùng 1 dòng
+  // bằng dấu ".  " hoặc ".\n" (2+ khoảng trắng sau dấu chấm = ý mới)
+  return raw
+    .split(/\n/)
+    .flatMap(line => line.split(/\.\s{2,}/))
+    .map(s => s.replace(/^[-•*\d.)]\s*/, '').trim())
+    .filter(Boolean);
+}
 function renderBatch(r){
   const v = el('pbVal'); if (v) v.textContent = 'x' + (Number.isInteger(batch) ? batch : batch.toFixed(1));
   const n = el('pbNote'); if (n) n.textContent = batch === 1 ? '' : 'đã nhân x' + batch;
 
   const raw = String((src === 'prep' ? r['Định lượng chuẩn'] : r['Định lượng']) || '').trim();
-  const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+  const lines = splitIngredients(raw);
   const box = el('pIng'); if (!box) return;
   box.innerHTML = lines.length ? lines.map(line => {
     const sc = scale(line, batch);
     const i = sc.indexOf(':');
-    const name = (i > -1 ? sc.slice(0,i) : sc).replace(/^[-•*]\s*/,'').trim();
-    const amt  = i > -1 ? sc.slice(i+1).trim() : '';
-    return `<div class="ing"><span class="n">${esc(name)}</span><span class="a">${esc(amt)}</span></div>`;
+    // nếu có dấu ":" → in đậm phần tên, phần sau là mô tả
+    const html = i > -1
+      ? `<b>${esc(sc.slice(0,i).trim())}</b><span>: ${esc(sc.slice(i+1).trim())}</span>`
+      : esc(sc);
+    return `<div class="ing"><span class="dot"></span><span class="n">${html}</span></div>`;
   }).join('') : '<p class="muted" style="font-size:13.5px">Chưa có định lượng cho món này.</p>';
 }
 function renderSteps(r){
