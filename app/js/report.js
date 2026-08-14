@@ -1,13 +1,19 @@
 /* ==========================================================================
    report.js — Thống kê kinh doanh
    Chọn kỳ: Ngày / Tháng / Năm / Khoảng / Tất cả.
+
    Doanh thu dựa trên đơn giá đã chốt lúc bán; bản ghi cũ dùng giá hiện tại
    trong Menu và được đánh dấu rõ.
+
+   GIẢM GIÁ nằm ở hóa đơn chứ không ở dòng lịch sử, nên mọi con số tiền ở đây
+   đều là THỰC THU — đã trừ phần giảm của hóa đơn đã thanh toán. Cách nối dòng
+   lịch sử với hóa đơn nằm ở thucThu.js.
    ========================================================================== */
 import {
   el, esc, money, moneyShort, nf, ymd, addDays, dmy, slug, parsePrice,
-  data, onData, resolvePrice, toast, store
+  data, onData, resolvePrice, toast, store, mocCua, taiHoaDonKhoang
 } from './core.js';
+import { ganThucThu, congSo } from './thucThu.js';
 
 let mode   = store.get('rp.mode', 'day');    // day | month | year | range | all
 let metric = 'rev';
@@ -100,6 +106,8 @@ function shell(){
       <div class="v"><span id="rpQty">–</span><small>ly</small></div><div class="s" id="rpQtySub"></div></div>
     <div class="rk"><div class="l">TB mỗi ly</div>
       <div class="v" id="rpAvg" style="font-size:20px">–</div><div class="s" id="rpAvgSub"></div></div>
+    <div class="rk wide hide" id="rpDiscCard"><div class="l">Đã giảm giá</div>
+      <div class="v" id="rpDisc" style="font-size:20px">–</div><div class="s" id="rpDiscSub"></div></div>
     <div class="rk wide"><div class="l">Món doanh thu cao nhất</div>
       <div class="v" id="rpTop" style="font-size:17px">–</div><div class="s" id="rpTopSub"></div></div>
     <div class="rk bad wide"><div class="l">Đã hủy</div>
@@ -174,7 +182,12 @@ export function mountReport(root){
   el('rpQ').oninput = e => { query = e.target.value.trim().toLowerCase(); render(); };
   el('rpCsv').onclick = csv;
 
-  onData(w => { if (w === 'history' || w === 'cancelled' || w === 'menu'){ years(); render(); } });
+  onData(w => {
+    // 'bills' cũng phải nghe: thu ngân bấm "đã trả" là hóa đơn đó mới bắt đầu
+    // được trừ giảm giá. Bỏ kỳ đã tải để lần vẽ tới nạp lại bản mới.
+    if (w === 'bills'){ kyDaTai = null; dangTaiHoaDon = null; render(); return; }
+    if (w === 'history' || w === 'cancelled' || w === 'menu'){ years(); render(); }
+  });
   render();
   mounted = true;
 }
@@ -188,6 +201,9 @@ function norm(d){
   const { price, live } = resolvePrice(d);
   const stored = parsePrice(d.revenue);
   return { item: String(d.item ?? '(không tên)'), qty, date, ts, price, live,
+           // Bàn + mốc thời gian: hai thứ duy nhất để nối dòng này với hóa đơn
+           // đã thu tiền nó. `mocCua` là đúng hàm phien.js dùng để cắt phiên bàn.
+           table: d.table ?? null, moc: mocCua(d),
            revenue: stored !== null ? stored : (price !== null ? price*qty : 0),
            hasPrice: price !== null };
 }
@@ -247,6 +263,33 @@ function gran(from,to,rows){
 }
 const bLabel = (k,g) => g==='hour' ? k+'h' : g==='month' ? 'T'+k.slice(5,7) : dmy(k);
 
+/* ─────────────────── hóa đơn của kỳ đang xem ───────────────────
+
+   `data.bills` chỉ giữ 200 hóa đơn gần nhất — đủ cho màn POS và cho báo cáo
+   hôm nay, thiếu hẳn cho báo cáo cả tháng. Thiếu hóa đơn nghĩa là phần giảm
+   giá của kỳ đó biến mất và doanh thu bị thổi lên đúng bằng số đã giảm.
+
+   Nên tải riêng theo khoảng ngày. Trong lúc chờ thì vẫn vẽ bằng 200 cái đang
+   có — thà số gần đúng hiện ngay còn hơn màn trắng — và nói rõ trên biểu ngữ
+   là đang tải, để không ai chốt sổ bằng con số tạm. */
+let kyDaTai = null;         // { khoa, list }
+let dangTaiHoaDon = null;   // khóa kỳ đang tải, null nếu rảnh
+
+function hoaDonKy(from, to){
+  const khoa = `${from || ''}|${to || ''}`;
+  if (kyDaTai && kyDaTai.khoa === khoa) return kyDaTai.list;
+
+  if (dangTaiHoaDon !== khoa){
+    dangTaiHoaDon = khoa;
+    taiHoaDonKhoang(from, to).then(list => {
+      if (dangTaiHoaDon !== khoa) return;      // người dùng đã đổi kỳ, bỏ kết quả cũ
+      dangTaiHoaDon = null;
+      if (list){ kyDaTai = { khoa, list }; render(); }
+    });
+  }
+  return data.bills;
+}
+
 /* ─────────────────── vẽ ─────────────────── */
 let last = null;
 function render(){
@@ -259,38 +302,53 @@ function render(){
   const [from,to] = range();
   el('rpCaption').textContent = caption(from,to);
 
-  const rows = data.history.map(norm).filter(r => inR(r.date, from, to));
+  const tho  = data.history.map(norm).filter(r => inR(r.date, from, to));
+  const rows = ganThucThu(tho, hoaDonKy(from, to));
   const cx   = data.cancelled.map(normCx).filter(r => inR(r.date, from, to));
 
   const byItem = new Map();
   rows.forEach(r => {
-    const c = byItem.get(r.item) || { qty:0, rev:0, price:r.price, live:r.live, hasPrice:r.hasPrice };
-    c.qty += r.qty; c.rev += r.revenue;
+    const c = byItem.get(r.item) || { qty:0, rev:0, goc:0, price:r.price, live:r.live, hasPrice:r.hasPrice };
+    c.qty += r.qty; c.rev += r.thucThu; c.goc += r.revenue;
     if (c.price == null && r.price != null){ c.price = r.price; c.hasPrice = true; c.live = r.live; }
     byItem.set(r.item, c);
   });
 
   const tQty = rows.reduce((s,r)=>s+r.qty,0);
-  const tRev = rows.reduce((s,r)=>s+r.revenue,0);
+  const so   = congSo(rows);
+  const tRev = so.thuc;
   const days = new Set(rows.map(r=>r.date).filter(Boolean));
   const miss = [...byItem.entries()].filter(([,v]) => !v.hasPrice);
   const live = [...byItem.values()].filter(v => v.live).length;
 
   const w = [];
   if (!data.menuLoaded) w.push('Chưa tải được bảng giá — doanh thu chỉ tính từ giá đã lưu khi bán.');
+  if (dangTaiHoaDon) w.push('Đang tải hóa đơn của kỳ này — phần giảm giá có thể chưa trừ đủ.');
   if (miss.length) w.push(`<b>${miss.length} món chưa có đơn giá</b>${
     miss.slice(0,3).map(([n])=>esc(n)).join(', ')}${miss.length>3?'…':''} — tính 0₫ nên doanh thu thấp hơn thực tế.`);
   if (live) w.push(`${live} món dùng đơn giá hiện tại trong Menu (bán trước khi hệ thống lưu giá).`);
+  // Ly đã pha mà chưa có hóa đơn nào thanh toán — vẫn cộng vào doanh thu theo
+  // giá niêm yết, nhưng phải nói ra: đây là tiền chưa nằm trong két, và nếu
+  // sau này thu có giảm giá thì con số hôm nay sẽ tụt xuống.
+  if (so.chuaChot) w.push(`<b>${money(so.chuaChot)} chưa chốt hóa đơn</b>tính theo giá niêm yết. Bàn chưa thanh toán, hoặc thu tiền mà không tạo hóa đơn.`);
   el('rpBanner').className = w.length ? 'rbanner show' : 'rbanner';
   el('rpBannerTxt').innerHTML = w.join('<br>');
 
   el('rpRev').textContent = money(tRev);
   el('rpRevSub').textContent = rows.length
-    ? `${nf.format(rows.length)} lượt bán · ${days.size} ngày` : 'Chưa có giao dịch';
+    ? `${nf.format(rows.length)} lượt bán · ${days.size} ngày${so.giam ? ' · đã trừ giảm giá' : ''}`
+    : 'Chưa có giao dịch';
   el('rpQty').textContent = nf.format(tQty);
   el('rpQtySub').textContent = byItem.size ? byItem.size + ' loại món' : '';
   el('rpAvg').textContent = tQty ? money(tRev/tQty) : '–';
   el('rpAvgSub').textContent = days.size ? 'TB ngày ' + moneyShort(tRev/days.size) + '₫' : '';
+
+  el('rpDiscCard').classList.toggle('hide', !so.giam);
+  el('rpDisc').textContent = '−' + money(so.giam);
+  el('rpDiscSub').textContent = so.giam
+    ? `${nf.format(so.soDongGiam)} lượt bán · niêm yết ${money(so.goc)} · thực thu ${
+        (tRev / so.goc * 100).toFixed(1)}%`
+    : '';
 
   const top = [...byItem.entries()].sort((a,b)=>b[1].rev-a[1].rev)[0];
   el('rpTop').textContent = top ? top[0] : '–';
@@ -310,18 +368,25 @@ function render(){
                    : sortKey==='qty'  ? (a.qty-b.qty)*sortDir : (a.rev-b.rev)*sortDir);
   const maxRev = Math.max(1, ...list.map(r=>r.rev));
   el('rpTblN').textContent = list.length ? list.length + ' món' : '';
-  el('rpItems').innerHTML = list.length ? list.map((r,i)=>`
+  el('rpItems').innerHTML = list.length ? list.map((r,i)=>{
+    // Đơn giá hiển thị là THỰC THU trên mỗi ly — chia ngược từ tiền đã thu chứ
+    // không lấy giá niêm yết. Có giảm giá thì kèm giá gốc để còn đối chiếu.
+    const dg = r.qty ? r.rev / r.qty : null;
+    const coGiam = r.goc > r.rev;
+    return `
     <div class="irow">
       <span class="rk2">${i+1}</span>
       <div class="ii">
         <div class="nm">${esc(r.item)}${!r.hasPrice ? '<span class="flag">chưa có giá</span>'
           : r.live ? '<span class="flag g">giá hiện tại</span>' : ''}</div>
-        <div class="mt">${nf.format(r.qty)} ly${r.hasPrice ? ' × ' + money(r.price) : ''}</div>
+        <div class="mt">${nf.format(r.qty)} ly${dg != null && r.hasPrice ? ' × ' + money(dg) : ''}${
+          coGiam ? `<span class="flag">gốc ${money(r.price)}</span>` : ''}</div>
         <div class="bar"><i style="width:${(r.rev/maxRev*100).toFixed(1)}%"></i></div>
       </div>
       <div class="vv"><div class="r">${money(r.rev)}</div>
         <div class="p">${tRev ? (r.rev/tRev*100).toFixed(1) : '0.0'}%</div></div>
-    </div>`).join('')
+    </div>`;
+  }).join('')
     : `<div class="empty" style="padding:30px 10px"><div class="ic">${query?'🔍':'📭'}</div>
         <h3>${query?'Không tìm thấy':'Chưa có dữ liệu trong kỳ này'}</h3>
         <p>${query?'Thử từ khóa khác.':'Món được ghi nhận khi quầy bấm “Hoàn thành”.'}</p></div>`;
@@ -335,7 +400,7 @@ function render(){
     else k = r.date;
     if (!k) return;
     const c = bk.get(k) || { qty:0, rev:0 };
-    c.qty += r.qty; c.rev += r.revenue; bk.set(k,c);
+    c.qty += r.qty; c.rev += r.thucThu; bk.set(k,c);
   });
   let keys = [...bk.keys()].sort();
   if (keys.length > 24) keys = keys.slice(-24);
@@ -369,20 +434,32 @@ function render(){
     : `<div class="empty" style="padding:24px 10px"><div class="ic">✅</div>
         <p>Không có món nào bị hủy trong kỳ này</p></div>`;
 
-  last = { list, tQty, tRev, from, to, cxList, cxL };
+  last = { list, tQty, tRev, from, to, cxList, cxL, so };
 }
 
 /* ─────────────────── xuất CSV ─────────────────── */
 function csv(){
   if (!last || !last.list.length) return toast('Không có dữ liệu để xuất','err');
-  const { list, tQty, tRev, from, to, cxList, cxL } = last;
+  const { list, tQty, tRev, from, to, cxList, cxL, so } = last;
   const q = s => '"' + String(s).replace(/"/g,'""') + '"';
+  // Ba cột tiền chứ không một: kế toán cần thấy giảm giá tách ra, không phải
+  // một con số đã trừ rồi mà không giải thích được vì sao lệch với bảng giá.
   const lines = [
-    ['Ky bao cao', q(caption(from,to))].join(','), '',
-    ['Hang','Ten mon','So luong (ly)','Don gia (VND)','Thanh tien (VND)','Ty trong DT (%)'].join(','),
-    ...list.map((r,i)=>[i+1, q(r.item), r.qty, r.hasPrice?Math.round(r.price):'',
-                        Math.round(r.rev), tRev?(r.rev/tRev*100).toFixed(1):'0.0'].join(',')),
-    '', ['','TONG CONG', tQty, '', Math.round(tRev), '100.0'].join(',')
+    ['Ky bao cao', q(caption(from,to))].join(','),
+    ['Doanh thu niem yet (VND)', Math.round(so.goc)].join(','),
+    ['Giam gia (VND)', Math.round(so.giam)].join(','),
+    ['Doanh thu thuc thu (VND)', Math.round(so.thuc)].join(','),
+    ...(so.chuaChot ? [['Chua chot hoa don (VND)', Math.round(so.chuaChot)].join(',')] : []),
+    '',
+    ['Hang','Ten mon','So luong (ly)','Don gia niem yet (VND)','Don gia thuc thu (VND)',
+     'Niem yet (VND)','Giam gia (VND)','Thuc thu (VND)','Ty trong DT (%)'].join(','),
+    ...list.map((r,i)=>[i+1, q(r.item), r.qty,
+                        r.hasPrice ? Math.round(r.price) : '',
+                        r.qty ? Math.round(r.rev/r.qty) : '',
+                        Math.round(r.goc), Math.round(r.goc - r.rev), Math.round(r.rev),
+                        tRev ? (r.rev/tRev*100).toFixed(1) : '0.0'].join(',')),
+    '', ['','TONG CONG', tQty, '', '',
+         Math.round(so.goc), Math.round(so.giam), Math.round(tRev), '100.0'].join(',')
   ];
   if (cxList.length){
     lines.push('', 'MON BI HUY', ['Ten mon','So luong','Gia tri mat (VND)'].join(','),

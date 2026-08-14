@@ -18,12 +18,26 @@ const tt  = (p) => trangThaiBan({ hnay: HNAY, ...p });
 
 // ── mốc thời gian ───────────────────────────────────────────────────────────
 
-test('ưu tiên giờ máy chủ, giờ suy từ HH:MM chỉ là phương án cuối', () => {
-  assert.equal(mocCua({ timestamp: 100, sentAt: 200, at: 300 }), 100);
+test('lúc GỌI món thắng lúc pha xong; giờ suy từ HH:MM chỉ là phương án cuối', () => {
+  assert.equal(mocCua({ timestamp: 300, sentAt: 100, at: 400 }), 100,
+    'sentAt thắng — nếu không, ly gọi trước hóa đơn mà pha xong sau sẽ bị tính tiền lần hai');
+  assert.equal(mocCua({ timestamp: 300, at: 400 }), 300, 'dòng cũ chưa có sentAt vẫn dùng timestamp');
   assert.equal(mocCua({ sentAt: 200, at: 300 }), 200);
   assert.equal(mocCua({ at: 300 }), 300);
   assert.equal(mocCua({}), 0);
   assert.equal(mocCua(null), 0);
+});
+
+test('LỖI: ly gọi trước hóa đơn, pha xong sau, bị hóa đơn kế tiếp gom lần nữa', () => {
+  // 09:55 khách gọi → 10:00 xuất và trả hóa đơn (đã gồm ly này) → 10:05 pha xong.
+  const bills = [hd(3, { status: 'paid', tinhToiLuc: T(10) })];
+  const history = [{ ...xong(3, 'Trà đào', 30000, T(10, 5)), sentAt: T(9, 55) }];
+  assert.deepEqual(goi({ orders: [], history, bills, tbl: 3 }), [],
+    'hóa đơn kế tiếp của bàn phải TRỐNG');
+
+  // Dòng cũ không có sentAt thì vẫn theo hành vi cũ — không phải chuyển đổi dữ liệu.
+  const cu = [xong(3, 'Trà đào', 30000, T(10, 5))];
+  assert.equal(goi({ orders: [], history: cu, bills, tbl: 3 }).length, 1);
 });
 
 // ── LỖI GỐC: bàn quay vòng nhiều lượt khách trong ngày ──────────────────────

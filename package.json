@@ -5,6 +5,9 @@
   "description": "App trong quán — POS, quầy pha chế, sơ chế, thống kê",
   "scripts": {
     "test": "node --test \"test/*.test.mjs\"",
+    "kiem:thanhtoan": "node test/kiem-man-thanh-toan.mjs",
+    "kiem:thongke": "node test/kiem-man-thong-ke.mjs",
+    "kiem:dangnhap": "node test/kiem-cong-dang-nhap.mjs",
     "deploy": "firebase deploy --only hosting"
   }
 }

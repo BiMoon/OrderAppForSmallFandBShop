@@ -898,6 +898,7 @@ const toTicket = d => ({
   time: d.time,
   stt: d.stt ?? null,
   price: d.price ?? null,     // đơn giá đã chốt lúc thu ngân gửi đơn
+  sentAt: Number(d.sentAt) || null,   // lúc GỌI món — chép sang history, xem complete()
   cancel: d.cancel || null,
   at: parseClock(d.time)
 });
@@ -1000,6 +1001,10 @@ function complete(key, btn){
     stt: t.stt ?? null,
     price: t.price ?? null,            // đơn giá lúc bán -> trang Thống kê tính doanh thu
     revenue: t.price != null ? t.price * (Number(t.quantity) || 1) : null,
+    // Lúc GỌI món, không phải lúc pha xong. App trong quán cắt phiên bàn theo
+    // mốc này; thiếu nó thì ly đã nằm trong hóa đơn vừa trả bị hóa đơn kế tiếp
+    // gom lần nữa và khách trả tiền hai lần.
+    sentAt: t.sentAt ?? null,
     completedDate: ngayStr,
     completedMonth: thangStr,
     completedYear: ngayStr.substring(0,4),

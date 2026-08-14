@@ -6,7 +6,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import {
   getDatabase, ref, push, set, remove, update, onValue, runTransaction,
-  query, orderByKey, limitToLast,
+  query, orderByKey, limitToLast, startAt, endAt, get,
   onChildAdded, onChildChanged, onChildRemoved, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 import {
@@ -209,6 +209,13 @@ function snapToArray(snap){
 }
 
 const listeners = new Set();
+
+/* Bộ đệm hóa đơn theo kỳ báo cáo. Khai báo ở đây chứ không nằm cạnh
+   `taiHoaDonKhoang` phía dưới: listener `bills` trong initData() dọn nó, và
+   file này đã dính một lần dùng biến trước khi khai báo. */
+const boNhoHoaDon = new Map();
+export const quenHoaDonDaTai = () => boNhoHoaDon.clear();
+
 export const data = {
   orders: [],
   history: [],
@@ -278,8 +285,11 @@ export function initData(){
   // cũ, và cái chậm đó lớn dần đến mức không ai nhớ vì sao.
   onValue(query(billsRef, orderByKey(), limitToLast(200)), snap => {
     data.bills = snapToArray(snap).map(({key, val:v}) => ({ key, ...v }));
+    // Thu ngân bấm "đã trả" là phần giảm giá của hóa đơn đó mới được tính vào
+    // doanh thu. Không dọn bộ đệm thì tab Thống kê vẫn vẽ số của lần tải trước.
+    quenHoaDonDaTai();
     emit('bills');
-  }, () => { data.bills = []; emit('bills'); });
+  }, () => { data.bills = []; quenHoaDonDaTai(); emit('bills'); });
 
   loadMenu(); loadPrep(); taiCauHinhQR();
 }
@@ -342,6 +352,10 @@ export function completeOrder(o){
     stt: o.stt ?? null,
     price: o.price ?? null,
     revenue: o.price != null ? o.price * (Number(o.quantity) || 1) : null,
+    // Giữ lại lúc GỌI món. Không có nó thì mốc của ly này nhảy từ lúc gọi sang
+    // lúc pha xong, và một ly đã nằm trong hóa đơn vừa trả sẽ bị hóa đơn kế
+    // tiếp gom lần nữa. Xem ghi chú ở `mocCua` trong phien.js.
+    sentAt: o.sentAt ?? null,
     completedDate: d,
     completedMonth: d.substring(0,7),
     completedYear: d.substring(0,4),
@@ -513,6 +527,36 @@ export function moLaiHoaDon(code){
 }
 
 export const xoaHoaDon = code => remove(ref(db, 'bills/' + code));
+
+/* ─────────────────── hóa đơn của một kỳ báo cáo ───────────────────
+
+   `data.bills` chỉ giữ 200 hóa đơn gần nhất — đủ cho màn POS, nhưng xem thống
+   kê cả tháng thì thiếu, mà thiếu hóa đơn là mất luôn phần giảm giá của kỳ đó.
+
+   Mã hóa đơn là `QCH` + yyMMdd + số thứ tự, nên khoảng ngày cắt được thẳng
+   bằng khóa, không phải tải cả nhánh về rồi lọc ở máy.
+
+   Nới mỗi đầu một ngày: ly pha lúc 23h55 có thể nằm trong hóa đơn tạo lúc
+   00h10 hôm sau, và mã hóa đơn thì mang ngày TẠO.
+
+   Bộ đệm `boNhoHoaDon` khai báo ở gần `data`, xem ghi chú trên đó. */
+export function taiHoaDonKhoang(tuNgay, denNgay){
+  const khoa = `${tuNgay || ''}|${denNgay || ''}`;
+  if (boNhoHoaDon.has(khoa)) return boNhoHoaDon.get(khoa);
+
+  const q = (tuNgay && denNgay)
+    ? query(billsRef, orderByKey(),
+        startAt('QCH' + vnDateKey(addDays(new Date(tuNgay + 'T00:00:00'), -1)) + '0000'),
+        endAt('QCH' + vnDateKey(addDays(new Date(denNgay + 'T00:00:00'), 1)) + '9999'))
+    : billsRef;
+
+  const p = get(q)
+    .then(snap => snapToArray(snap).map(({ key, val }) => ({ key, ...val })))
+    .catch(err => { console.error(err); boNhoHoaDon.delete(khoa); return null; });
+
+  boNhoHoaDon.set(khoa, p);
+  return p;
+}
 
 /* ─────────────────── giữ màn hình không tắt (cho quầy pha chế) ─────────────────── */
 let wakeLock = null;

@@ -6,3 +6,4 @@ node_modules/
 *.bak2
 test/anh-*.png
 _sync/
+_to_delete/

@@ -37,14 +37,28 @@ const cungBan = (x, tbl) => String(x.table) === String(tbl);
 /**
  * Mốc thời gian của một dòng đơn hoặc dòng lịch sử.
  *
- * Ưu tiên giờ MÁY CHỦ (`timestamp` của history, `sentAt` của orders). `at` suy
- * ra từ chuỗi "HH:MM" nên phụ thuộc đồng hồ của điện thoại — dùng làm phương án
- * cuối, không dùng để quyết định tiền nếu còn lựa chọn khác.
+ * **`sentAt` (lúc GỌI món) đứng trước `timestamp` (lúc PHA XONG)** — và đây là
+ * chỗ từng tính tiền hai lần:
+ *
+ *   09:55 khách gọi trà đào → 10:00 thu ngân xuất hóa đơn, ly đó nằm trong hóa
+ *   đơn vì lúc xem trước nó là một `order` mang `sentAt` 09:55 → 10:05 quầy pha
+ *   xong, dòng lịch sử mang `timestamp` 10:05.
+ *
+ * Lấy `timestamp` thì mốc của chính ly ấy nhảy từ 09:55 sang 10:05, tức là ra
+ * SAU mốc chốt của hóa đơn vừa trả, nên hóa đơn kế tiếp gom nó lần nữa. Khách
+ * trả tiền hai lần cho một ly, và không ai thấy.
+ *
+ * Lấy `sentAt` thì ly đó thuộc về đúng lượt khách đã gọi nó, bất kể quầy pha
+ * xong lúc nào. Dòng cũ không có `sentAt` vẫn rơi về `timestamp` như trước —
+ * không phải chuyển đổi dữ liệu.
+ *
+ * `at` suy ra từ chuỗi "HH:MM" nên phụ thuộc đồng hồ của điện thoại — dùng làm
+ * phương án cuối, không dùng để quyết định tiền nếu còn lựa chọn khác.
  *
  * 0 = không biết.
  */
 export const mocCua = (it) =>
-  Number(it?.timestamp) || Number(it?.sentAt) || Number(it?.at) || 0;
+  Number(it?.sentAt) || Number(it?.timestamp) || Number(it?.at) || 0;
 
 /** Hóa đơn của một bàn, mới nhất trước. */
 export const hoaDonCuaBan = (bills, tbl) =>
