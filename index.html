@@ -64,9 +64,22 @@
     const btn  = document.getElementById('btnLogin');
     const msg  = document.getElementById('msg');
 
-    // Already logged in → go straight to app
+    /* Đăng nhập xong thì đi đâu.
+       Mặc định là PWA điện thoại. Nhưng nếu người ta bị đá về đây TỪ một trang
+       máy tính (observeOrder.html / summary.html / order.html), auth-guard.js
+       đã kèm ?tiep=… — trả họ về đúng chỗ đó, đừng bắt gõ lại địa chỉ.
+
+       Chỉ nhận đường dẫn NỘI BỘ bắt đầu bằng một dấu / và không phải '//':
+       '//evil.com' là một URL tuyệt đối hợp lệ, nhận bừa là mở đường cho người
+       khác dán link đăng nhập rồi hất nạn nhân sang trang của họ. */
+    function noiDen(){
+      const t = new URLSearchParams(location.search).get('tiep');
+      return (t && /^\/(?!\/)/.test(t)) ? t : './app/index.html';
+    }
+
+    // Already logged in → go straight to app (or back where we came from)
     onAuthStateChanged(auth, user => {
-      if (user) location.replace('./app/index.html');
+      if (user) location.replace(noiDen());
     });
 
     btn.onclick = async () => {

@@ -213,3 +213,47 @@ node test/kiem-man-thanh-toan.mjs     # cả màn hình, bằng trình duyệt t
 
 Bài thứ hai thay Firebase bằng bản giả nạp qua `page.route`, nên chạy được offline
 và dựng màn hình bằng **chính** `pos.js`/`core.js` đang chạy thật.
+
+---
+
+## 8. Ba trang máy tính và cổng đăng nhập
+
+`order.html`, `observeOrder.html`, `summary.html` chạy trên máy tính ở quầy
+(PWA không có bố cục màn hình lớn — `app.css` chỉ có media query cho chế độ
+tối, nên ba trang này vẫn có việc thật).
+
+**Chúng chỉ import `firebase-app.js` và `firebase-database.js`, không import
+`firebase-auth.js`.** Phiên đăng nhập vẫn nằm trong IndexedDB của trình duyệt
+(Firebase Auth lưu theo origin, sống qua mọi lần chuyển trang) — nhưng không có
+gì trên ba trang đó đọc nó ra. `getDatabase(app)` lấy token qua component
+`auth-internal`, mà component ấy **chỉ được đăng ký khi module auth được nạp
+trên chính trang đó**. Không nạp thì Database mở kết nối trắng, rules từ chối,
+và trang đứng im không báo gì.
+
+PWA `/app/index.html` không dính vì cả bốn màn hình của nó là **một trang duy
+nhất**, điều hướng bằng `#/pos`, `#/kds`, `#/prep`, `#/report` — nạp auth đúng
+một lần nên thanh trên chỗ nào cũng thấy tài khoản.
+
+Bản vá là `auth-guard.js`, gắn bằng đúng một dòng cuối `<body>` mỗi trang:
+
+```html
+<script type="module" src="./auth-guard.js"></script>
+```
+
+Nó gọi `getAuth(app)` trên cùng FirebaseApp mà trang đã khởi tạo — chỉ vậy là
+Database có chỗ lấy token, tự gắn vào kết nối đang mở và chạy lại listener.
+Kèm theo: huy hiệu tài khoản ở góc dưới phải (có nút Thoát), và nếu chưa đăng
+nhập thì đá về `index.html?tiep=<đường quay lại>`.
+
+`index.html` đọc `?tiep=` để trả người dùng về **đúng trang máy tính** họ đang
+mở, thay vì đẩy sang PWA điện thoại rồi bắt gõ lại địa chỉ. Chỉ nhận đường dẫn
+nội bộ bắt đầu bằng một dấu `/` và không phải `//` — `//evil.com` là URL tuyệt
+đối hợp lệ, nhận bừa là mở đường cho người khác dán link đăng nhập rồi hất nạn
+nhân sang trang của họ.
+
+```bash
+node test/kiem-cong-dang-nhap.mjs
+```
+
+Một file dùng chung chứ không chép ba lần: ba bản chép tay của cùng một đoạn mã
+là ba bản sẽ lệch nhau — dự án này đã dính đúng chuyện đó hai lần.
