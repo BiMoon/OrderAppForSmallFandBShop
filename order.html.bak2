@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Đặt Món</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
+      height: 100vh; width: 100vw;
+      display: flex; overflow: hidden; color: #fff;
+    }
+
+    /* ══════════════════════════════
+       LEFT PANEL — narrow input col
+       ══════════════════════════════ */
+    #left {
+      width: 210px; min-width: 210px; flex-shrink: 0;
+      display: flex; flex-direction: column;
+      padding: 10px 12px; gap: 7px;
+      border-right: 1px solid rgba(224,201,127,0.2);
+      overflow: hidden;
+    }
+
+    #left h1 {
+      font-size: 0.82rem; letter-spacing: 3px;
+      color: #e0c97f; text-transform: uppercase;
+      text-align: center; flex-shrink: 0;
+    }
+
+    /* Table grid */
+    .table-label {
+      font-size: 0.62rem; letter-spacing: 2px;
+      color: #e0c97f; text-transform: uppercase;
+    }
+    #table-grid {
+      display: grid; grid-template-columns: repeat(5, 1fr);
+      gap: 4px;
+    }
+    .tbl-btn {
+      height: 32px; border-radius: 7px;
+      border: 1.5px solid rgba(224,201,127,0.35);
+      background: rgba(255,255,255,0.07); color: #e0c97f;
+      font-size: 0.88rem; font-weight: 700; cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .tbl-btn:active { transform: scale(0.9); }
+    .tbl-btn.active {
+      background: linear-gradient(135deg, #e0c97f, #c8a84b);
+      color: #1a1a2e; border-color: transparent;
+    }
+    .tbl-btn:not(.active):hover { background: rgba(224,201,127,0.15); }
+
+    /* Search */
+    #search-wrap { position: relative; }
+    #search-input {
+      width: 100%; padding: 6px 10px;
+      background: rgba(255,255,255,0.07);
+      border: 1.5px solid rgba(224,201,127,0.4);
+      border-radius: 8px; color: #fff;
+      font-size: 0.82rem; outline: none;
+    }
+    #search-input::placeholder { color: #555; }
+    #search-input:focus { border-color: #e0c97f; }
+    #search-dropdown {
+      display: none; position: absolute;
+      top: calc(100% + 3px); left: 0; right: 0;
+      background: #16213e; border: 1px solid #e0c97f;
+      border-radius: 8px; z-index: 200;
+      max-height: 180px; overflow-y: auto;
+    }
+    #search-dropdown.open { display: block; }
+    .dd-item {
+      padding: 7px 10px; cursor: pointer;
+      font-size: 0.8rem; border-bottom: 1px solid rgba(255,255,255,0.06);
+      display: flex; gap: 8px; align-items: center;
+    }
+    .dd-item:last-child { border-bottom: none; }
+    .dd-item:hover { background: rgba(224,201,127,0.12); }
+    .dd-item .dd-code { color: #e0c97f; font-weight: 700; min-width: 28px; }
+    .dd-item .dd-name { color: #eee; }
+    .dd-item .dd-match { color: #e0c97f; font-weight: 700; }
+
+    /* Display */
+    #display {
+      width: 100%;
+      background: rgba(255,255,255,0.08);
+      border: 2px solid #e0c97f; border-radius: 9px;
+      padding: 6px 12px; font-size: 1.8rem;
+      text-align: right; letter-spacing: 6px;
+      color: #fff; min-height: 46px;
+    }
+
+    /* Preview */
+    #preview {
+      width: 100%; min-height: 26px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.78rem; font-weight: 600; text-align: center;
+      border-radius: 6px; padding: 4px 8px;
+      transition: all 0.2s;
+    }
+    #preview.match {
+      background: rgba(224,201,127,0.12);
+      border: 1px solid rgba(224,201,127,0.35);
+      color: #e0c97f;
+    }
+    #preview.no-match {
+      background: rgba(220,80,80,0.1);
+      border: 1px solid rgba(220,80,80,0.3);
+      color: #f88;
+    }
+    #preview.empty { border: none; background: none; }
+
+    /* Status */
+    #status { font-size: 0.68rem; color: #888; text-align: center; height: 14px; }
+
+    /* ══════════════════════════════
+       RIGHT PANEL — numpad + orders
+       ══════════════════════════════ */
+    #right {
+      flex: 1; display: flex; gap: 0;
+      overflow: hidden; min-width: 0;
+    }
+
+    /* — Numpad column — */
+    #numpad-col {
+      width: 220px; min-width: 220px; flex-shrink: 0;
+      display: flex; flex-direction: column;
+      padding: 10px 12px; gap: 7px;
+      border-right: 1px solid rgba(255,255,255,0.08);
+    }
+
+    #qty-wrap {
+      display: flex; align-items: center;
+      background: rgba(255,255,255,0.06);
+      border: 1.5px solid rgba(224,201,127,0.35);
+      border-radius: 8px; overflow: hidden; flex-shrink: 0;
+    }
+    .qty-step {
+      width: 38px; height: 34px; border: none;
+      background: rgba(255,255,255,0.07); color: #e0c97f;
+      font-size: 1.2rem; font-weight: 700; cursor: pointer;
+      transition: background 0.15s; flex-shrink: 0;
+    }
+    .qty-step:hover { background: rgba(224,201,127,0.2); }
+    .qty-step:active { background: rgba(224,201,127,0.35); }
+    #qty-display {
+      flex: 1; text-align: center; font-size: 1rem;
+      font-weight: 700; color: #fff;
+    }
+
+    .numpad {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 6px; flex: 1;
+    }
+    .btn {
+      border-radius: 9px; border: none;
+      font-size: 1.3rem; font-weight: bold; cursor: pointer;
+      transition: transform 0.1s, background 0.15s; user-select: none;
+      min-height: 46px;
+    }
+    .btn:active { transform: scale(0.92); }
+    .btn-num {
+      background: rgba(255,255,255,0.1); color: #fff;
+      border: 1px solid rgba(255,255,255,0.18);
+    }
+    .btn-num:hover { background: rgba(255,255,255,0.2); }
+    .btn-del { background: rgba(220,80,80,0.7); color: #fff; }
+    .btn-del:hover { background: rgba(220,80,80,0.9); }
+    .btn-order {
+      grid-column: span 3;
+      background: linear-gradient(135deg, #e0c97f, #c8a84b);
+      color: #1a1a2e; font-size: 0.88rem; letter-spacing: 1px;
+      border-radius: 9px; min-height: 40px;
+    }
+    .btn-order:hover { opacity: 0.9; }
+
+    /* — Order column — */
+    #order-col {
+      flex: 1; display: flex; flex-direction: column;
+      overflow: hidden; padding: 10px 12px; gap: 7px; min-width: 0;
+    }
+
+    #order-header {
+      display: flex; align-items: center;
+      justify-content: space-between; flex-shrink: 0;
+    }
+    #order-header h2 {
+      font-size: 0.82rem; letter-spacing: 2px;
+      color: #e0c97f; text-transform: uppercase;
+    }
+    #btn-clear-all {
+      background: rgba(220,80,80,0.2);
+      border: 1px solid rgba(220,80,80,0.45);
+      color: #f88; font-size: 0.72rem;
+      padding: 4px 10px; border-radius: 6px; cursor: pointer;
+    }
+    #btn-clear-all:hover { background: rgba(220,80,80,0.45); color: #fff; }
+
+    /* Tab bar */
+    #table-tabs {
+      display: flex; gap: 5px; flex-wrap: wrap; flex-shrink: 0;
+    }
+    .tab-btn {
+      padding: 3px 10px; border-radius: 16px;
+      border: 1.5px solid rgba(224,201,127,0.35);
+      background: rgba(255,255,255,0.06); color: #aaa;
+      font-size: 0.74rem; cursor: pointer; transition: background 0.15s;
+    }
+    .tab-btn.active {
+      background: rgba(224,201,127,0.18);
+      border-color: #e0c97f; color: #e0c97f; font-weight: 700;
+    }
+    .tab-btn .tab-count {
+      display: inline-block; background: #e0c97f; color: #1a1a2e;
+      border-radius: 10px; font-size: 0.64rem; font-weight: 700;
+      padding: 0 4px; margin-left: 3px; line-height: 1.4;
+    }
+
+    /* Empty state */
+    #order-empty {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 8px; opacity: 0.35;
+    }
+    #order-empty .icon { font-size: 2.8rem; }
+    #order-empty p { font-size: 0.78rem; letter-spacing: 2px; text-transform: uppercase; }
+
+    /* Scrollable order list */
+    #order-list {
+      flex: 1; overflow-y: auto; display: flex;
+      flex-direction: column; gap: 6px; min-height: 0;
+    }
+    #order-list::-webkit-scrollbar { width: 3px; }
+    #order-list::-webkit-scrollbar-thumb { background: rgba(224,201,127,0.3); border-radius: 3px; }
+
+    .order-item {
+      display: flex; align-items: center; gap: 8px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 9px; padding: 7px 10px;
+      border-left: 3px solid #e0c97f;
+      animation: fadeIn 0.2s ease; flex-shrink: 0;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateX(12px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    .oi-qty-ctrl {
+      display: flex; align-items: center; gap: 3px; flex-shrink: 0;
+    }
+    .oi-qty-ctrl .qty-step {
+      width: 22px; height: 22px; font-size: 0.9rem; border-radius: 5px;
+    }
+    .oi-qty-val {
+      font-size: 0.95rem; font-weight: 700;
+      color: #e0c97f; min-width: 26px; text-align: center;
+    }
+    .oi-info { flex: 1; min-width: 0; }
+    .oi-name {
+      font-size: 0.85rem; color: #fff; font-weight: 600;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .oi-meta { font-size: 0.68rem; color: #999; margin-top: 1px; }
+    .oi-actions { display: flex; gap: 4px; flex-shrink: 0; }
+    .oi-btn {
+      height: 26px; padding: 0 7px; border-radius: 6px;
+      border: none; font-size: 0.7rem; cursor: pointer;
+      font-weight: 600; transition: background 0.15s;
+    }
+    .oi-btn-table {
+      background: rgba(224,201,127,0.15);
+      border: 1px solid rgba(224,201,127,0.4); color: #e0c97f;
+    }
+    .oi-btn-table:hover { background: rgba(224,201,127,0.3); }
+    .oi-btn-del {
+      background: rgba(220,80,80,0.2);
+      border: 1px solid rgba(220,80,80,0.4); color: #f88;
+    }
+    .oi-btn-del:hover { background: rgba(220,80,80,0.5); color: #fff; }
+
+    /* "Gửi Đơn" pinned at bottom */
+    #btn-send {
+      flex-shrink: 0;
+      background: linear-gradient(135deg, #4caf7d, #2e7d52);
+      border: none; color: #fff; font-size: 0.9rem; font-weight: 700;
+      padding: 10px; border-radius: 10px; cursor: pointer;
+      letter-spacing: 1px; transition: opacity 0.15s; width: 100%;
+    }
+    #btn-send:disabled { opacity: 0.3; cursor: default; }
+    #btn-send:not(:disabled):hover { opacity: 0.85; }
+
+    /* Modal: change table */
+    #modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6); z-index: 500;
+      align-items: center; justify-content: center;
+    }
+    #modal-overlay.open { display: flex; }
+    #modal {
+      background: #16213e; border: 1px solid #e0c97f;
+      border-radius: 14px; padding: 20px; width: 260px;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    #modal h3 { color: #e0c97f; font-size: 0.84rem; letter-spacing: 2px; text-transform: uppercase; }
+    #modal-grid {
+      display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
+    }
+    .modal-tbl {
+      height: 38px; border-radius: 8px;
+      border: 1.5px solid rgba(224,201,127,0.35);
+      background: rgba(255,255,255,0.07); color: #e0c97f;
+      font-size: 0.9rem; font-weight: 700; cursor: pointer;
+    }
+    .modal-tbl:hover { background: rgba(224,201,127,0.2); }
+    #modal-cancel {
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #aaa; padding: 7px; border-radius: 8px;
+      cursor: pointer; font-size: 0.85rem;
+    }
+    #modal-cancel:hover { background: rgba(220,80,80,0.3); color: #fff; }
+  </style>
+</head>
+<body>
+
+<!-- LEFT: table selector + search + display/preview -->
+<div id="left">
+  <h1>🍵 Đặt Món</h1>
+
+  <span class="table-label">Chọn bàn</span>
+  <div id="table-grid"></div>
+
+  <div id="search-wrap">
+    <input id="search-input" type="text" placeholder="🔍 Tìm tên món..."
+           oninput="onSearchInput(this.value)" autocomplete="off" />
+    <div id="search-dropdown"></div>
+  </div>
+
+  <div id="display">_</div>
+  <div id="preview" class="empty"></div>
+  <div id="status">Đang tải...</div>
+</div>
+
+<!-- RIGHT: numpad col + order col -->
+<div id="right">
+
+  <!-- Numpad column -->
+  <div id="numpad-col">
+    <div id="qty-wrap">
+      <button class="qty-step" onclick="changeQty(-1)">−</button>
+      <span id="qty-display">1</span>
+      <button class="qty-step" onclick="changeQty(1)">+</button>
+    </div>
+
+    <div class="numpad">
+      <button class="btn btn-num" onclick="press('7')">7</button>
+      <button class="btn btn-num" onclick="press('8')">8</button>
+      <button class="btn btn-num" onclick="press('9')">9</button>
+      <button class="btn btn-num" onclick="press('4')">4</button>
+      <button class="btn btn-num" onclick="press('5')">5</button>
+      <button class="btn btn-num" onclick="press('6')">6</button>
+      <button class="btn btn-num" onclick="press('1')">1</button>
+      <button class="btn btn-num" onclick="press('2')">2</button>
+      <button class="btn btn-num" onclick="press('3')">3</button>
+      <button class="btn btn-del" onclick="del()">⌫</button>
+      <button class="btn btn-num" onclick="press('0')">0</button>
+      <button class="btn btn-order" onclick="addOrder()">✚ Thêm</button>
+    </div>
+  </div>
+
+  <!-- Order column -->
+  <div id="order-col">
+    <div id="order-header">
+      <h2>🧾 Danh Sách</h2>
+      <button id="btn-clear-all" onclick="clearAll()">🗑 Xóa tất cả</button>
+    </div>
+
+    <div id="table-tabs"></div>
+
+    <div id="order-empty">
+      <div class="icon">🍵</div>
+      <p>Chưa có món nào</p>
+    </div>
+
+    <div id="order-list" style="display:none"></div>
+
+    <button id="btn-send" onclick="sendOrders()" disabled>📤 Gửi Đơn</button>
+  </div>
+
+</div>
+
+<!-- Modal: change table -->
+<div id="modal-overlay">
+  <div id="modal">
+    <h3>Chuyển sang bàn</h3>
+    <div id="modal-grid"></div>
+    <button id="modal-cancel" onclick="closeModal()">Hủy</button>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  import { getDatabase, ref, push } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAWgDT99kbQlTzOG76xVImqtu3tRGPfstI",
+    authDomain: "quanlyphachequan.firebaseapp.com",
+    databaseURL: "https://quanlyphachequan-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "quanlyphachequan",
+    storageBucket: "quanlyphachequan.firebasestorage.app",
+    messagingSenderId: "522540933651",
+    appId: "1:522540933651:web:acbe8224f1db47b2d895e6"
+  };
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+
+  const API_URL = 'https://script.google.com/macros/s/AKfycbxRdkktSsPqkkiYUE9_lJfvqpnzQaKzn7xZ597jPpXaEfJWwWsy1xjgN9pCkRZSOCJl/exec';
+  let menuData = [];
+  let input = '';
+  let selectedTable = 1;
+  let activeTab = 'all';
+  let orders = [];
+  let nextId = 1;
+
+  // Table buttons
+  const tableGrid = document.getElementById('table-grid');
+  for (let i = 1; i <= 10; i++) {
+    const b = document.createElement('button');
+    b.className = 'tbl-btn' + (i === 1 ? ' active' : '');
+    b.textContent = i;
+    b.onclick = () => selectTable(i);
+    tableGrid.appendChild(b);
+  }
+
+  function selectTable(n) {
+    selectedTable = n;
+    document.querySelectorAll('.tbl-btn').forEach((b, i) =>
+      b.classList.toggle('active', i + 1 === n));
+  }
+
+  // Load menu
+  fetch(API_URL)
+    .then(r => r.json())
+    .then(json => {
+      menuData = Array.isArray(json) ? json : [];
+      document.getElementById('status').textContent = `✅ ${menuData.length} món`;
+    })
+    .catch(() => {
+      document.getElementById('status').textContent = '⚠️ Lỗi tải dữ liệu';
+    });
+
+  // Search
+  window.onSearchInput = function(val) {
+    const dd = document.getElementById('search-dropdown');
+    const q = val.trim().toLowerCase();
+    if (q.length < 2) { dd.classList.remove('open'); return; }
+    const results = menuData.filter(d =>
+      (d['Tên Món'] || '').toLowerCase().includes(q)).slice(0, 8);
+    if (!results.length) { dd.classList.remove('open'); return; }
+    dd.innerHTML = results.map(d => {
+      const name = d['Tên Món'] || '';
+      const hl = name.replace(new RegExp(`(${q})`, 'gi'), '<span class="dd-match">$1</span>');
+      return `<div class="dd-item" onclick="selectFromSearch(${d['STT']})">
+        <span class="dd-code">#${d['STT']}</span>
+        <span class="dd-name">${hl}</span>
+      </div>`;
+    }).join('');
+    dd.classList.add('open');
+  };
+
+  window.selectFromSearch = function(stt) {
+    const item = menuData.find(d => parseInt(d['STT'], 10) === parseInt(stt, 10));
+    if (!item) return;
+    document.getElementById('search-input').value = '';
+    document.getElementById('search-dropdown').classList.remove('open');
+    const qty = selectedQty;
+    selectedQty = 1; document.getElementById('qty-display').textContent = 1;
+    placeOrder(item, qty);
+  };
+
+  document.addEventListener('click', e => {
+    if (!document.getElementById('search-wrap').contains(e.target))
+      document.getElementById('search-dropdown').classList.remove('open');
+  });
+
+  // Numpad
+  function updatePreview() {
+    const el = document.getElementById('preview');
+    if (!input) { el.className = 'empty'; el.textContent = ''; return; }
+    const item = menuData.find(d => parseInt(d['STT'], 10) === parseInt(input, 10));
+    if (item) {
+      el.className = 'match';
+      el.textContent = `✔ ${item['Tên Món']}`;
+    } else {
+      el.className = 'no-match';
+      el.textContent = 'Không tìm thấy món';
+    }
+  }
+
+  let selectedQty = 1;
+  window.changeQty = function(delta) {
+    selectedQty = Math.max(1, selectedQty + delta);
+    document.getElementById('qty-display').textContent = selectedQty;
+  };
+
+  window.press = d => { if (input.length >= 3) return; input += d; document.getElementById('display').textContent = input; updatePreview(); };
+  window.del   = () => { input = input.slice(0, -1); document.getElementById('display').textContent = input || '_'; updatePreview(); };
+
+  window.addOrder = function() {
+    if (!input) return;
+    const num = parseInt(input, 10);
+    const item = menuData.find(d => parseInt(d['STT'], 10) === num);
+    const qty = selectedQty;
+    selectedQty = 1; document.getElementById('qty-display').textContent = 1;
+    input = ''; document.getElementById('display').textContent = '_'; updatePreview();
+    if (!item) { alert(`Không tìm thấy món số ${num}`); return; }
+    placeOrder(item, qty);
+  };
+
+  document.addEventListener('keydown', e => {
+    if (e.key >= '0' && e.key <= '9') window.press(e.key);
+    else if (e.key === 'Backspace') window.del();
+    else if (e.key === 'Enter') window.addOrder();
+  });
+
+  // Order logic
+  function placeOrder(item, qty) {
+    orders.push({
+      id: nextId++,
+      stt: item['STT'],
+      name: item['Tên Món'] || `Món #${item['STT']}`,
+      qty,
+      table: selectedTable,
+      time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+    });
+    renderAll();
+  }
+
+  window.sendOrders = function() {
+    if (!orders.length) return;
+    const ordersRef = ref(db, 'orders');
+    orders.forEach(o => push(ordersRef, {
+      item: o.name,
+      quantity: o.qty,
+      table: o.table,
+      time: o.time,
+      status: 'Chờ pha'
+    }));
+    orders = [];
+    renderAll();
+  };
+
+  window.updateQty = function(id, delta) {
+    const o = orders.find(o => o.id === id);
+    if (!o) return;
+    o.qty = Math.max(1, o.qty + delta);
+    renderAll();
+  };
+
+  window.removeOrder = function(id) {
+    orders = orders.filter(o => o.id !== id);
+    renderAll();
+  };
+
+  window.clearAll = function() {
+    if (!orders.length) return;
+    if (confirm('Xóa tất cả đơn?')) { orders = []; renderAll(); }
+  };
+
+  function updateSendBtn() {
+    document.getElementById('btn-send').disabled = orders.length === 0;
+  }
+
+  // Change table modal
+  let changingId = null;
+  window.openChangeTable = function(id) {
+    changingId = id;
+    const grid = document.getElementById('modal-grid');
+    grid.innerHTML = '';
+    for (let i = 1; i <= 10; i++) {
+      const b = document.createElement('button');
+      b.className = 'modal-tbl';
+      b.textContent = i;
+      b.onclick = () => applyChangeTable(i);
+      grid.appendChild(b);
+    }
+    document.getElementById('modal-overlay').classList.add('open');
+  };
+
+  function applyChangeTable(newTable) {
+    const o = orders.find(o => o.id === changingId);
+    if (o) o.table = newTable;
+    closeModal();
+    renderAll();
+  }
+
+  window.closeModal = function() {
+    document.getElementById('modal-overlay').classList.remove('open');
+    changingId = null;
+  };
+
+  // Render
+  function renderAll() {
+    renderTabs();
+    renderList();
+    updateSendBtn();
+  }
+
+  function renderTabs() {
+    const tabs = document.getElementById('table-tabs');
+    const usedTables = [...new Set(orders.map(o => o.table))].sort((a, b) => a - b);
+    if (activeTab !== 'all' && !usedTables.includes(activeTab)) activeTab = 'all';
+
+    let html = `<button class="tab-btn ${activeTab === 'all' ? 'active' : ''}" onclick="setTab('all')">
+      Tất cả <span class="tab-count">${orders.length}</span></button>`;
+    usedTables.forEach(t => {
+      const cnt = orders.filter(o => o.table === t).length;
+      html += `<button class="tab-btn ${activeTab === t ? 'active' : ''}" onclick="setTab(${t})">
+        Bàn ${t} <span class="tab-count">${cnt}</span></button>`;
+    });
+    tabs.innerHTML = html;
+  }
+
+  window.setTab = function(t) {
+    activeTab = t === 'all' ? 'all' : parseInt(t, 10);
+    renderAll();
+  };
+
+  function renderList() {
+    const listEl = document.getElementById('order-list');
+    const emptyEl = document.getElementById('order-empty');
+    const filtered = activeTab === 'all' ? orders : orders.filter(o => o.table === activeTab);
+
+    if (!filtered.length) {
+      listEl.style.display = 'none';
+      emptyEl.style.display = 'flex';
+      return;
+    }
+
+    emptyEl.style.display = 'none';
+    listEl.style.display = 'flex';
+
+    listEl.innerHTML = filtered.map(o => `
+      <div class="order-item">
+        <div class="oi-qty-ctrl">
+          <button class="qty-step" style="width:22px;height:22px;font-size:0.85rem;border-radius:5px" onclick="updateQty(${o.id},-1)">−</button>
+          <span class="oi-qty-val">×${o.qty}</span>
+          <button class="qty-step" style="width:22px;height:22px;font-size:0.85rem;border-radius:5px" onclick="updateQty(${o.id},1)">+</button>
+        </div>
+        <div class="oi-info">
+          <div class="oi-name">${o.name}</div>
+          <div class="oi-meta">#${o.stt} · Bàn ${o.table} · ${o.time}</div>
+        </div>
+        <div class="oi-actions">
+          <button class="oi-btn oi-btn-table" onclick="openChangeTable(${o.id})">🔄</button>
+          <button class="oi-btn oi-btn-del" onclick="removeOrder(${o.id})">✕</button>
+        </div>
+      </div>`).join('');
+  }
+
+  renderAll();
+</script>
+</body>
+</html>

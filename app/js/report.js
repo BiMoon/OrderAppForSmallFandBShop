@@ -1,0 +1,407 @@
+/* ==========================================================================
+   report.js — Thống kê kinh doanh
+   Chọn kỳ: Ngày / Tháng / Năm / Khoảng / Tất cả.
+   Doanh thu dựa trên đơn giá đã chốt lúc bán; bản ghi cũ dùng giá hiện tại
+   trong Menu và được đánh dấu rõ.
+   ========================================================================== */
+import {
+  el, esc, money, moneyShort, nf, ymd, addDays, dmy, slug, parsePrice,
+  data, onData, resolvePrice, toast, store
+} from './core.js';
+
+let mode   = store.get('rp.mode', 'day');    // day | month | year | range | all
+let metric = 'rev';
+let sortKey = 'rev', sortDir = -1, query = '';
+let mounted = false;
+
+const CSS = `
+.rkpi{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.rk{background:var(--surface);border:1px solid var(--line);border-radius:14px;
+    padding:13px 14px;box-shadow:var(--shadow-1)}
+.rk.wide{grid-column:span 2}
+.rk .l{font-size:10.5px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em}
+.rk .v{font-size:25px;font-weight:700;letter-spacing:-.03em;line-height:1.1;margin-top:6px;
+       font-variant-numeric:tabular-nums}
+.rk .v small{font-size:13px;font-weight:600;color:var(--ink-3);margin-left:4px}
+.rk .s{font-size:11.5px;color:var(--ink-2);margin-top:5px;line-height:1.35;
+       overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rk.accent{background:var(--brand);border-color:var(--brand)}
+.rk.accent .l{color:rgba(255,255,255,.72)}
+.rk.accent .v{color:#fff;font-size:31px}
+.rk.accent .s{color:rgba(255,255,255,.85)}
+.rk.bad .v{color:var(--late)}
+.rbanner{display:none;gap:9px;background:var(--warn-soft);border:1px solid #edd9b0;border-radius:13px;
+         padding:11px 13px;font-size:12.5px;line-height:1.5;color:#7a4a08;margin-bottom:12px}
+.rbanner.show{display:flex}
+.rbanner b{display:block}
+.irow{display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid var(--line)}
+.irow:last-child{border-bottom:0}
+.irow .rk2{flex:none;width:25px;height:25px;border-radius:8px;background:var(--bg);color:var(--ink-2);
+           display:grid;place-items:center;font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums}
+.irow:nth-child(1) .rk2{background:var(--brand);color:#fff}
+.irow:nth-child(2) .rk2,.irow:nth-child(3) .rk2{background:var(--brand-soft);color:var(--brand)}
+.irow .ii{flex:1;min-width:0}
+.irow .nm{font-size:14.5px;font-weight:600;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.irow .mt{font-size:11.5px;color:var(--ink-3);margin-top:2px;font-variant-numeric:tabular-nums}
+.irow .vv{flex:none;text-align:right}
+.irow .vv .r{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums}
+.irow .vv .p{font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.flag{font-size:9.5px;font-weight:700;color:var(--warn);background:var(--warn-soft);
+      border-radius:5px;padding:1px 5px;margin-left:5px;white-space:nowrap}
+.flag.g{color:var(--ink-3);background:var(--bg)}
+.bar{height:5px;background:var(--bg);border-radius:99px;overflow:hidden;margin-top:5px}
+.bar i{display:block;height:100%;background:var(--brand-2);border-radius:99px}
+.rchart{display:flex;align-items:flex-end;gap:4px;height:150px;padding-top:16px}
+.rcol{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px;
+      min-width:0;position:relative}
+.rcol i{display:block;width:100%;max-width:34px;background:var(--brand-2);border-radius:4px 4px 0 0;min-height:3px}
+.rcol em{font-size:9px;color:var(--ink-3);font-style:normal;white-space:nowrap;font-variant-numeric:tabular-nums}
+.rcol b{position:absolute;top:0;font-size:9px;font-weight:700;color:var(--ink-2);white-space:nowrap}
+.cxr{display:flex;align-items:center;gap:11px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+.cxr:last-child{border-bottom:0}
+.cxr .q{flex:none;width:30px;height:30px;border-radius:9px;background:var(--late-soft);color:var(--late);
+        display:grid;place-items:center;font-size:13px;font-weight:700}
+.cxr .n{flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cxr .rs{font-size:11px;color:var(--ink-3);margin-top:1px;font-weight:500}
+.cxr .v{flex:none;font-weight:700;color:var(--late);font-variant-numeric:tabular-nums}
+`;
+
+function shell(){
+  return `
+  <div class="seg wrap" id="rpMode" style="margin-bottom:10px">
+    <button data-m="day">Ngày</button>
+    <button data-m="month">Tháng</button>
+    <button data-m="year">Năm</button>
+    <button data-m="range">Khoảng</button>
+    <button data-m="all">Tất cả</button>
+  </div>
+
+  <div id="rpCtlDay" class="hide">
+    <input type="date" id="rpDate">
+    <div class="row mt8">
+      <button class="btn sm" data-jump="0" style="flex:1">Hôm nay</button>
+      <button class="btn sm" data-jump="-1" style="flex:1">Hôm qua</button>
+    </div>
+  </div>
+  <div id="rpCtlMonth" class="hide"><input type="month" id="rpMonth"></div>
+  <div id="rpCtlYear" class="hide"><select id="rpYear"></select></div>
+  <div id="rpCtlRange" class="hide">
+    <input type="date" id="rpFrom">
+    <input type="date" id="rpTo" class="mt8">
+  </div>
+
+  <div class="sec-label" id="rpCaption"></div>
+  <div class="rbanner" id="rpBanner"><span>⚠️</span><span id="rpBannerTxt"></span></div>
+
+  <div class="rkpi">
+    <div class="rk accent wide"><div class="l">Doanh thu</div>
+      <div class="v" id="rpRev">–</div><div class="s" id="rpRevSub"></div></div>
+    <div class="rk"><div class="l">Sản lượng</div>
+      <div class="v"><span id="rpQty">–</span><small>ly</small></div><div class="s" id="rpQtySub"></div></div>
+    <div class="rk"><div class="l">TB mỗi ly</div>
+      <div class="v" id="rpAvg" style="font-size:20px">–</div><div class="s" id="rpAvgSub"></div></div>
+    <div class="rk wide"><div class="l">Món doanh thu cao nhất</div>
+      <div class="v" id="rpTop" style="font-size:17px">–</div><div class="s" id="rpTopSub"></div></div>
+    <div class="rk bad wide"><div class="l">Đã hủy</div>
+      <div class="v" id="rpCx" style="font-size:20px">–</div><div class="s" id="rpCxSub"></div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="card-title" id="rpChartT">Biểu đồ</span>
+      <span class="card-note" id="rpChartN"></span><div class="spacer"></div>
+      <div class="seg" id="rpMetric" style="width:auto">
+        <button data-v="rev" style="min-height:32px;padding:0 12px">₫</button>
+        <button data-v="qty" style="min-height:32px;padding:0 12px">Ly</button>
+      </div></div>
+    <div class="card-body"><div class="rchart" id="rpChart"></div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="card-title">Chi tiết theo món</span>
+      <span class="card-note" id="rpTblN"></span></div>
+    <div class="card-body" style="padding-top:6px">
+      <div class="field" style="margin-bottom:6px"><span class="ic">🔍</span>
+        <input type="search" id="rpQ" placeholder="Tìm tên món…" autocomplete="off"></div>
+      <div class="seg" id="rpSort" style="margin:10px 0 4px">
+        <button data-s="rev">Doanh thu</button>
+        <button data-s="qty">Số lượng</button>
+        <button data-s="name">Tên</button>
+      </div>
+      <div id="rpItems"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="card-title">Món bị hủy</span>
+      <span class="card-note" id="rpCxN"></span></div>
+    <div class="card-body" id="rpCxList"></div>
+  </div>
+
+  <button class="btn block mt16" id="rpCsv">⬇ Xuất CSV</button>`;
+}
+
+export function mountReport(root){
+  if (mounted) return;
+  const st = document.createElement('style'); st.textContent = CSS;
+  document.head.appendChild(st);
+  root.innerHTML = shell();
+
+  const t = new Date();
+  el('rpDate').value  = ymd(t);
+  el('rpMonth').value = ymd(t).slice(0,7);
+  el('rpFrom').value  = ymd(addDays(t,-6));
+  el('rpTo').value    = ymd(t);
+  years();
+
+  el('rpMode').onclick = e => {
+    const b = e.target.closest('button[data-m]'); if (!b) return;
+    mode = b.dataset.m; store.set('rp.mode', mode); render();
+  };
+  el('rpMetric').onclick = e => {
+    const b = e.target.closest('button[data-v]'); if (!b) return;
+    metric = b.dataset.v; render();
+  };
+  el('rpSort').onclick = e => {
+    const b = e.target.closest('button[data-s]'); if (!b) return;
+    if (sortKey === b.dataset.s) sortDir *= -1; else { sortKey = b.dataset.s; sortDir = -1; }
+    render();
+  };
+  el('rpCtlDay').onclick = e => {
+    const b = e.target.closest('[data-jump]'); if (!b) return;
+    el('rpDate').value = ymd(addDays(new Date(), +b.dataset.jump)); render();
+  };
+  ['rpDate','rpMonth','rpYear','rpFrom','rpTo'].forEach(id => el(id).onchange = render);
+  el('rpQ').oninput = e => { query = e.target.value.trim().toLowerCase(); render(); };
+  el('rpCsv').onclick = csv;
+
+  onData(w => { if (w === 'history' || w === 'cancelled' || w === 'menu'){ years(); render(); } });
+  render();
+  mounted = true;
+}
+
+/* ─────────────────── chuẩn hóa ─────────────────── */
+function norm(d){
+  let date = d.completedDate || d.date || null;
+  const ts = typeof d.timestamp === 'number' ? d.timestamp : null;
+  if (!date && ts) date = ymd(new Date(ts));
+  const qty = Number(d.quantity) || 0;
+  const { price, live } = resolvePrice(d);
+  const stored = parsePrice(d.revenue);
+  return { item: String(d.item ?? '(không tên)'), qty, date, ts, price, live,
+           revenue: stored !== null ? stored : (price !== null ? price*qty : 0),
+           hasPrice: price !== null };
+}
+function normCx(d){
+  let date = d.cancelledDate || null;
+  const ts = typeof d.timestamp === 'number' ? d.timestamp : null;
+  if (!date && ts) date = ymd(new Date(ts));
+  const qty = Number(d.quantity) || 0;
+  const { price } = resolvePrice(d);
+  const stored = parsePrice(d.lostRevenue);
+  return { item: String(d.item ?? '(không tên)'), qty, date, reason: d.reason || null,
+           lost: stored !== null ? stored : (price !== null ? price*qty : 0) };
+}
+
+function years(){
+  const sel = el('rpYear'); if (!sel) return;
+  const cur = sel.value;
+  const ys = new Set([String(new Date().getFullYear())]);
+  data.history.forEach(d => { const x = d.completedDate || d.date; if (x) ys.add(String(x).slice(0,4)); });
+  data.cancelled.forEach(d => { if (d.cancelledDate) ys.add(String(d.cancelledDate).slice(0,4)); });
+  const list = [...ys].sort().reverse();
+  sel.innerHTML = list.map(y => `<option value="${y}">${y}</option>`).join('');
+  sel.value = list.includes(cur) ? cur : list[0];
+}
+
+function range(){
+  switch(mode){
+    case 'day':   { const v = el('rpDate').value;  return v ? [v,v] : [null,null]; }
+    case 'month': { const v = el('rpMonth').value; return v ? [v+'-01', v+'-31'] : [null,null]; }
+    case 'year':  { const v = el('rpYear').value;  return v ? [v+'-01-01', v+'-12-31'] : [null,null]; }
+    case 'range': return [el('rpFrom').value||null, el('rpTo').value||null];
+    default: return [null,null];
+  }
+}
+function caption(from,to){
+  if (mode === 'all')  return 'Toàn bộ dữ liệu';
+  if (mode === 'year') return 'Năm ' + el('rpYear').value;
+  if (mode === 'month'){ const v = el('rpMonth').value;
+    return v ? 'Tháng ' + v.slice(5,7) + '/' + v.slice(0,4) : 'Chưa chọn tháng'; }
+  if (mode === 'day'){ const v = el('rpDate').value;
+    if (!v) return 'Chưa chọn ngày';
+    return new Date(v+'T00:00:00').toLocaleDateString('vi-VN',
+      { weekday:'long', day:'2-digit', month:'2-digit', year:'numeric' }); }
+  if (!from && !to) return 'Chưa chọn khoảng';
+  return 'Từ ' + dmy(from) + '/' + from.slice(0,4) + ' đến ' + dmy(to) + '/' + to.slice(0,4);
+}
+const inR = (d,f,t) => { if (!d) return !f && !t; if (f && d < f) return false; if (t && d > t) return false; return true; };
+
+function gran(from,to,rows){
+  if (mode === 'day') return 'hour';
+  if (mode === 'month') return 'day';
+  if (mode === 'year') return 'month';
+  let a = from, b = to;
+  if (!a || !b){ const ds = rows.map(r=>r.date).filter(Boolean).sort(); a = a||ds[0]; b = b||ds[ds.length-1]; }
+  if (!a || !b) return 'day';
+  return (new Date(b) - new Date(a))/864e5 > 62 ? 'month' : 'day';
+}
+const bLabel = (k,g) => g==='hour' ? k+'h' : g==='month' ? 'T'+k.slice(5,7) : dmy(k);
+
+/* ─────────────────── vẽ ─────────────────── */
+let last = null;
+function render(){
+  [...el('rpMode').children].forEach(b => b.classList.toggle('active', b.dataset.m === mode));
+  [...el('rpMetric').children].forEach(b => b.classList.toggle('active', b.dataset.v === metric));
+  [...el('rpSort').children].forEach(b => b.classList.toggle('active', b.dataset.s === sortKey));
+  ['Day','Month','Year','Range'].forEach(m =>
+    el('rpCtl'+m).classList.toggle('hide', mode !== m.toLowerCase()));
+
+  const [from,to] = range();
+  el('rpCaption').textContent = caption(from,to);
+
+  const rows = data.history.map(norm).filter(r => inR(r.date, from, to));
+  const cx   = data.cancelled.map(normCx).filter(r => inR(r.date, from, to));
+
+  const byItem = new Map();
+  rows.forEach(r => {
+    const c = byItem.get(r.item) || { qty:0, rev:0, price:r.price, live:r.live, hasPrice:r.hasPrice };
+    c.qty += r.qty; c.rev += r.revenue;
+    if (c.price == null && r.price != null){ c.price = r.price; c.hasPrice = true; c.live = r.live; }
+    byItem.set(r.item, c);
+  });
+
+  const tQty = rows.reduce((s,r)=>s+r.qty,0);
+  const tRev = rows.reduce((s,r)=>s+r.revenue,0);
+  const days = new Set(rows.map(r=>r.date).filter(Boolean));
+  const miss = [...byItem.entries()].filter(([,v]) => !v.hasPrice);
+  const live = [...byItem.values()].filter(v => v.live).length;
+
+  const w = [];
+  if (!data.menuLoaded) w.push('Chưa tải được bảng giá — doanh thu chỉ tính từ giá đã lưu khi bán.');
+  if (miss.length) w.push(`<b>${miss.length} món chưa có đơn giá</b>${
+    miss.slice(0,3).map(([n])=>esc(n)).join(', ')}${miss.length>3?'…':''} — tính 0₫ nên doanh thu thấp hơn thực tế.`);
+  if (live) w.push(`${live} món dùng đơn giá hiện tại trong Menu (bán trước khi hệ thống lưu giá).`);
+  el('rpBanner').className = w.length ? 'rbanner show' : 'rbanner';
+  el('rpBannerTxt').innerHTML = w.join('<br>');
+
+  el('rpRev').textContent = money(tRev);
+  el('rpRevSub').textContent = rows.length
+    ? `${nf.format(rows.length)} lượt bán · ${days.size} ngày` : 'Chưa có giao dịch';
+  el('rpQty').textContent = nf.format(tQty);
+  el('rpQtySub').textContent = byItem.size ? byItem.size + ' loại món' : '';
+  el('rpAvg').textContent = tQty ? money(tRev/tQty) : '–';
+  el('rpAvgSub').textContent = days.size ? 'TB ngày ' + moneyShort(tRev/days.size) + '₫' : '';
+
+  const top = [...byItem.entries()].sort((a,b)=>b[1].rev-a[1].rev)[0];
+  el('rpTop').textContent = top ? top[0] : '–';
+  el('rpTopSub').textContent = top
+    ? money(top[1].rev) + (tRev ? ` · ${(top[1].rev/tRev*100).toFixed(1)}% doanh thu` : '') : '';
+
+  const cxQ = cx.reduce((s,r)=>s+r.qty,0), cxL = cx.reduce((s,r)=>s+r.lost,0);
+  el('rpCx').textContent = money(cxL);
+  el('rpCxSub').textContent = cx.length
+    ? `${cx.length} lượt · ${cxQ} ly${tRev ? ` · ${(cxL/(tRev+cxL)*100).toFixed(1)}% giá trị` : ''}`
+    : 'Không có món nào bị hủy';
+
+  /* danh sách món */
+  let list = [...byItem.entries()].map(([item,v]) => ({ item, ...v }));
+  if (query) list = list.filter(r => r.item.toLowerCase().includes(query));
+  list.sort((a,b) => sortKey==='name' ? a.item.localeCompare(b.item,'vi')*sortDir*-1
+                   : sortKey==='qty'  ? (a.qty-b.qty)*sortDir : (a.rev-b.rev)*sortDir);
+  const maxRev = Math.max(1, ...list.map(r=>r.rev));
+  el('rpTblN').textContent = list.length ? list.length + ' món' : '';
+  el('rpItems').innerHTML = list.length ? list.map((r,i)=>`
+    <div class="irow">
+      <span class="rk2">${i+1}</span>
+      <div class="ii">
+        <div class="nm">${esc(r.item)}${!r.hasPrice ? '<span class="flag">chưa có giá</span>'
+          : r.live ? '<span class="flag g">giá hiện tại</span>' : ''}</div>
+        <div class="mt">${nf.format(r.qty)} ly${r.hasPrice ? ' × ' + money(r.price) : ''}</div>
+        <div class="bar"><i style="width:${(r.rev/maxRev*100).toFixed(1)}%"></i></div>
+      </div>
+      <div class="vv"><div class="r">${money(r.rev)}</div>
+        <div class="p">${tRev ? (r.rev/tRev*100).toFixed(1) : '0.0'}%</div></div>
+    </div>`).join('')
+    : `<div class="empty" style="padding:30px 10px"><div class="ic">${query?'🔍':'📭'}</div>
+        <h3>${query?'Không tìm thấy':'Chưa có dữ liệu trong kỳ này'}</h3>
+        <p>${query?'Thử từ khóa khác.':'Món được ghi nhận khi quầy bấm “Hoàn thành”.'}</p></div>`;
+
+  /* biểu đồ */
+  const g = gran(from,to,rows), bk = new Map();
+  rows.forEach(r => {
+    let k = null;
+    if (g === 'hour'){ if (r.ts == null) return; k = String(new Date(r.ts).getHours()).padStart(2,'0'); }
+    else if (g === 'month') k = (r.date||'').slice(0,7);
+    else k = r.date;
+    if (!k) return;
+    const c = bk.get(k) || { qty:0, rev:0 };
+    c.qty += r.qty; c.rev += r.revenue; bk.set(k,c);
+  });
+  let keys = [...bk.keys()].sort();
+  if (keys.length > 24) keys = keys.slice(-24);
+  const val = k => metric === 'rev' ? bk.get(k).rev : bk.get(k).qty;
+  const mx = Math.max(1, ...keys.map(val));
+  el('rpChartT').textContent = g==='hour' ? 'Theo giờ' : g==='month' ? 'Theo tháng' : 'Theo ngày';
+  el('rpChartN').textContent = keys.length ? keys.length + (g==='hour'?' giờ':g==='month'?' tháng':' ngày') : '';
+  el('rpChart').innerHTML = keys.length ? keys.map(k => {
+      const v = val(k);
+      return `<div class="rcol" title="${bLabel(k,g)}: ${money(bk.get(k).rev)} · ${bk.get(k).qty} ly">
+        <b>${metric==='rev' ? moneyShort(v) : nf.format(v)}</b>
+        <i style="height:${Math.max(4, v/mx*104).toFixed(0)}px"></i>
+        <em>${bLabel(k,g)}</em></div>`;
+    }).join('')
+    : `<div class="empty" style="margin:auto;padding:14px"><p>${
+        g==='hour' ? 'Bản ghi cũ chưa có giờ để vẽ' : 'Chưa có dữ liệu để vẽ'}</p></div>`;
+
+  /* món bị hủy */
+  const cxBy = new Map();
+  cx.forEach(r => {
+    const c = cxBy.get(r.item) || { qty:0, lost:0, rs:new Set() };
+    c.qty += r.qty; c.lost += r.lost; if (r.reason) c.rs.add(r.reason);
+    cxBy.set(r.item,c);
+  });
+  const cxList = [...cxBy.entries()].sort((a,b)=>b[1].lost-a[1].lost||b[1].qty-a[1].qty);
+  el('rpCxN').textContent = cx.length ? `${cxQ} ly · ${money(cxL)}` : '';
+  el('rpCxList').innerHTML = cxList.length
+    ? cxList.map(([n,v])=>`<div class="cxr"><div class="q">${v.qty}</div>
+        <div class="n">${esc(n)}<div class="rs">${esc([...v.rs].join(', ') || 'Không nêu lý do')}</div></div>
+        <div class="v">${v.lost ? '−'+money(v.lost) : '—'}</div></div>`).join('')
+    : `<div class="empty" style="padding:24px 10px"><div class="ic">✅</div>
+        <p>Không có món nào bị hủy trong kỳ này</p></div>`;
+
+  last = { list, tQty, tRev, from, to, cxList, cxL };
+}
+
+/* ─────────────────── xuất CSV ─────────────────── */
+function csv(){
+  if (!last || !last.list.length) return toast('Không có dữ liệu để xuất','err');
+  const { list, tQty, tRev, from, to, cxList, cxL } = last;
+  const q = s => '"' + String(s).replace(/"/g,'""') + '"';
+  const lines = [
+    ['Ky bao cao', q(caption(from,to))].join(','), '',
+    ['Hang','Ten mon','So luong (ly)','Don gia (VND)','Thanh tien (VND)','Ty trong DT (%)'].join(','),
+    ...list.map((r,i)=>[i+1, q(r.item), r.qty, r.hasPrice?Math.round(r.price):'',
+                        Math.round(r.rev), tRev?(r.rev/tRev*100).toFixed(1):'0.0'].join(',')),
+    '', ['','TONG CONG', tQty, '', Math.round(tRev), '100.0'].join(',')
+  ];
+  if (cxList.length){
+    lines.push('', 'MON BI HUY', ['Ten mon','So luong','Gia tri mat (VND)'].join(','),
+      ...cxList.map(([n,v]) => [q(n), v.qty, Math.round(v.lost)].join(',')),
+      ['TONG', cxList.reduce((s,[,v])=>s+v.qty,0), Math.round(cxL)].join(','));
+  }
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type:'text/csv;charset=utf-8;' });
+  const name = 'doanhthu-' + (from||'tatca') + (to && to!==from ? '_'+to : '') + '.csv';
+
+  // Trên Android, chia sẻ file dễ dùng hơn là tải về
+  const file = window.File ? new File([blob], name, { type:'text/csv' }) : null;
+  if (file && navigator.canShare && navigator.canShare({ files:[file] })){
+    navigator.share({ files:[file], title:'Báo cáo doanh thu' })
+      .then(()=>toast('Đã chia sẻ báo cáo','ok'))
+      .catch(()=>{});
+    return;
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  URL.revokeObjectURL(a.href);
+  toast('Đã xuất ' + list.length + ' dòng','ok');
+}

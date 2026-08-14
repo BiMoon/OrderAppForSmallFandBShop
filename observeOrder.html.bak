@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Màn Hình Quầy Pha Chế (KDS)</title>
+    <style>
+        body { font-family: Arial; background: #222; color: #fff; padding: 20px; }
+        .order-card { background: #ff9800; color: #000; padding: 15px; margin: 10px 0; border-radius: 8px; font-size: 20px; font-weight: bold; }
+    </style>
+</head>
+<body>
+<h1>☕ DANH SÁCH MÓN ĐANG CHỜ PHA</h1>
+<div id="danhSachDon">Đang chờ đơn hàng mới...</div>
+
+<!-- Thư viện Firebase -->
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getDatabase, ref, onChildAdded, onChildRemoved, push, remove, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyAWgDT99kbQlTzOG76xVImqtu3tRGPfstI",
+        authDomain: "quanlyphachequan.firebaseapp.com",
+        databaseURL: "https://quanlyphachequan-default-rtdb.asia-southeast1.firebasedatabase.app",
+        projectId: "quanlyphachequan",
+        storageBucket: "quanlyphachequan.firebasestorage.app",
+        messagingSenderId: "522540933651",
+        appId: "1:522540933651:web:acbe8224f1db47b2d895e6"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const ordersRef = ref(db, 'orders');
+
+    const container = document.getElementById("danhSachDon");
+
+    // Lắng nghe xem có đơn hàng mới nào được đẩy lên không
+    // 1. LẮNG NGHE KHI CÓ ĐƠN HÀNG MỚI ĐẨY LÊN
+    onChildAdded(ordersRef, (snapshot) => {
+            const data = snapshot.val();
+            const key = snapshot.key; // ID của đơn hàng trên firebase
+
+            // Nếu là đơn đầu tiên, xóa chữ "Đang chờ..."
+            if(container.innerHTML.includes("Đang chờ đơn hàng mới...")) {
+                container.innerHTML = "";
+            }
+
+            // Kiểm tra nếu thẻ đã tồn tại thì không tạo lại (tránh trùng lặp)
+            if (document.getElementById(key)) return;
+
+            // Tạo khung hiển thị món nước mới đến
+            const div = document.createElement("div");
+            div.className = "order-card";
+            div.id = key;
+            
+            // TRUYỀN ĐỦ THAM SỐ: key, tên món, số lượng vào hàm hoanThanh
+            div.innerHTML = `Món: ${data.item} (SL: ${data.quantity}) - Lúc: ${data.time} 
+                             <button onclick="hoanThanh('${key}', '${data.item}', ${data.quantity})" style="float:right; padding:8px 15px;">Xong</button>`;
+            
+            container.prepend(div); // Đưa đơn mới lên đầu danh sách
+
+            // Phát âm thanh báo có đơn mới
+            var audio = new Audio('https://www.soundjay.com/buttons/sounds/beep-07.aiff');
+            audio.play().catch(e => console.log("Trình duyệt chặn autoplay âm thanh"));
+        });
+
+        // 2. LẮNG NGHE KHI ĐƠN HÀNG BỊ XÓA (để tự động dọn giao diện trên mọi màn hình KDS)
+        onChildRemoved(ordersRef, (snapshot) => {
+            const key = snapshot.key;
+            const element = document.getElementById(key);
+            if (element) {
+                element.remove();
+            }
+            // Nếu hết đơn thì hiện lại chữ chờ
+            if (container.children.length === 0) {
+                container.innerHTML = "Đang chờ đơn hàng mới...";
+            }
+        });
+
+    // 3. ĐỊNH NGHĨA HÀM HOÀN THÀNH (Lưu lịch sử -> Xóa đơn hàng)
+    window.hoanThanh = function(key, itemName, itemQty) {
+            const now = new Date();
+            const ngayStr = now.toISOString().split('T')[0]; // Định dạng YYYY-MM-DD
+            const thangStr = ngayStr.substring(0, 7);       // Định dạng YYYY-MM
+
+            // Bước A: Lưu dữ liệu vào nhánh 'history' phục vụ trang Thống kê
+            const historyRef = ref(db, 'history');
+            const dataToSave = {
+                item: itemName,
+                quantity: Number(itemQty),
+                completedDate: ngayStr,
+                completedMonth: thangStr,
+                timestamp: serverTimestamp()
+            };
+
+            push(historyRef, dataToSave)
+                .then(() => {
+                    console.log("Đã lưu lịch sử thành công!");
+                    // Bước B: Sau khi lưu xong thì xóa đơn khỏi nhánh 'orders'
+                    const itemOrderRef = ref(db, 'orders/' + key);
+                    return remove(itemOrderRef);
+                })
+                .then(() => {
+                    console.log("Đã xóa đơn hàng khỏi danh sách chờ.");
+                })
+                .catch((error) => {
+                    console.error("Lỗi khi xử lý nút Xong:", error);
+                    alert("Lỗi kết nối Firebase hoặc chưa cấp quyền Rules (.write). Hãy kiểm tra lại!");
+                });
+        }
+</script>
+</body>
+</html>

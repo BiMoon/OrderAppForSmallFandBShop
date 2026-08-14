@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Thống Kê Món Đã Pha Chế</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f9; color: #333; }
+        h1 { color: #2c3e50; }
+        .filter-box { background: #fff; padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #3498db; color: white; }
+        tr:hover { background-color: #f1f1f1; }
+        .total-box { font-size: 18px; font-weight: bold; margin-top: 15px; color: #e74c3c; }
+    </style>
+</head>
+<body>
+
+    <h1>📊 Thống Kê Món Đã Pha Chế</h1>
+
+    <div class="filter-box">
+        <label><b>Lọc theo:</b></label>
+        <select id="filterType" onchange="toggleFilterInput()">
+            <option value="all">Tất cả thời gian</option>
+            <option value="date">Theo Ngày cụ thể</option>
+            <option value="month">Theo Tháng cụ thể</option>
+        </select>
+        
+        <input type="date" id="inputDate" style="display:none;" onchange="loadSummaryData()">
+        <input type="month" id="inputMonth" style="display:none;" onchange="loadSummaryData()">
+        
+        <button onclick="loadSummaryData()" style="padding: 5px 10px; cursor: pointer;">Làm mới dữ liệu</button>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Tên Món / Ly</th>
+                <th>Tổng Số Lượng Đã Bán</th>
+            </tr>
+        <tbody id="summaryTableBody">
+            <tr><td colspan="2">Đang tải dữ liệu...</td></tr>
+        </tbody>
+    </table>
+
+    <div class="total-box" id="tongSoLy">Tổng cộng: 0 ly</div>
+
+    <!-- Thư viện Firebase -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, get, child } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        // Thay thông số cấu hình Firebase của bạn vào đây
+        const firebaseConfig = {
+            apiKey: "AIzaSyAWgDT99kbQlTzOG76xVImqtu3tRGPfstI",
+            authDomain: "quanlyphachequan.firebaseapp.com",
+            databaseURL: "https://quanlyphachequan-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "quanlyphachequan",
+            storageBucket: "quanlyphachequan.firebasestorage.app",
+            messagingSenderId: "522540933651",
+            appId: "1:522540933651:web:acbe8224f1db47b2d895e6"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // Đặt giá trị mặc định cho input ngày là ngày hôm nay
+        document.getElementById('inputDate').value = new Date().toISOString().split('T')[0];
+
+        window.toggleFilterInput = function() {
+            const type = document.getElementById('filterType').value;
+            document.getElementById('inputDate').style.display = (type === 'date') ? 'inline-block' : 'none';
+            document.getElementById('inputMonth').style.display = (type === 'month') ? 'inline-block' : 'none';
+            loadSummaryData();
+        }
+
+        window.loadSummaryData = function() {
+            const filterType = document.getElementById('filterType').value;
+            const selectedDate = document.getElementById('inputDate').value;
+            const selectedMonth = document.getElementById('inputMonth').value;
+
+            const dbRef = ref(db);
+            get(child(dbRef, 'history')).then((snapshot) => {
+                const tbody = document.getElementById('summaryTableBody');
+                tbody.innerHTML = "";
+                
+                if (!snapshot.exists()) {
+                    tbody.innerHTML = "<tr><td colspan='2'>Chưa có dữ liệu lịch sử pha chế.</td></tr>";
+                    document.getElementById('tongSoLy').innerText = "Tổng cộng: 0 ly";
+                    return;
+                }
+
+                let stats = {};
+                let tongCong = 0;
+
+                snapshot.forEach((childSnapshot) => {
+                    const data = childSnapshot.val();
+                    
+                    // Lọc dữ liệu theo điều kiện người dùng chọn
+                    let match = true;
+                    if (filterType === 'date') {
+                        if (data.date !== selectedDate) match = false;
+                    } else if (filterType === 'month') {
+                        if (data.month !== selectedMonth) match = false;
+                    }
+
+                    if (match) {
+                        let tenMon = data.item;
+                        let soLuong = Number(data.quantity) || 0;
+
+                        if (stats[tenMon]) {
+                            stats[tenMon] += soLuong;
+                        } else {
+                            stats[tenMon] = soLuong;
+                        }
+                        tongCong += soLuong;
+                    }
+                });
+
+                // Hiển thị kết quả lên bảng
+                let hasData = false;
+                for (let mon in stats) {
+                    hasData = true;
+                    let tr = document.createElement('tr');
+                    tr.innerHTML = `<td>${mon}</td><td><b>${stats[mon]}</b> ly</td>`;
+                    tbody.appendChild(tr);
+                }
+
+                if (!hasData) {
+                    tbody.innerHTML = "<tr><td colspan='2'>Không có dữ liệu trong khoảng thời gian này.</td></tr>";
+                }
+
+                document.getElementById('tongSoLy').innerText = `Tổng cộng: ${tongCong} ly`;
+
+            }).catch((error) => {
+                console.error(error);
+                alert("Lỗi khi tải dữ liệu thống kê!");
+            });
+        }
+
+        // Tự động tải dữ liệu khi vừa mở trang
+        window.onload = function() {
+            loadSummaryData();
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Đặt Món</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
+      height: 100vh; width: 100vw;
+      display: flex; overflow: hidden; color: #fff;
+    }
+
+    /* ── LEFT PANEL ── */
+    #left {
+      width: 300px; min-width: 300px;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 20px 18px;
+      border-right: 1px solid rgba(224,201,127,0.2);
+      gap: 12px;
+    }
+
+    #left h1 {
+      font-size: 1rem; letter-spacing: 3px;
+      color: #e0c97f; text-transform: uppercase; text-align: center;
+    }
+
+    /* Table selector */
+    .table-label {
+      font-size: 0.7rem; letter-spacing: 2px;
+      color: #e0c97f; text-transform: uppercase;
+      align-self: flex-start;
+    }
+    #table-grid {
+      display: grid; grid-template-columns: repeat(5, 1fr);
+      gap: 6px; width: 100%;
+    }
+    .tbl-btn {
+      height: 44px; border-radius: 10px; border: 1.5px solid rgba(224,201,127,0.35);
+      background: rgba(255,255,255,0.07); color: #e0c97f;
+      font-size: 1rem; font-weight: 700; cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .tbl-btn:active { transform: scale(0.92); }
+    .tbl-btn.active {
+      background: linear-gradient(135deg, #e0c97f, #c8a84b);
+      color: #1a1a2e; border-color: transparent;
+    }
+    .tbl-btn:not(.active):hover { background: rgba(224,201,127,0.15); }
+
+    /* Search */
+    #search-wrap { position: relative; width: 100%; }
+    #search-input {
+      width: 100%; padding: 9px 14px;
+      background: rgba(255,255,255,0.07);
+      border: 1.5px solid rgba(224,201,127,0.4);
+      border-radius: 10px; color: #fff;
+      font-size: 0.9rem; outline: none;
+    }
+    #search-input::placeholder { color: #666; }
+    #search-input:focus { border-color: #e0c97f; }
+    #search-dropdown {
+      display: none; position: absolute;
+      top: calc(100% + 4px); left: 0; right: 0;
+      background: #16213e; border: 1px solid #e0c97f;
+      border-radius: 10px; z-index: 200;
+      max-height: 200px; overflow-y: auto;
+    }
+    #search-dropdown.open { display: block; }
+    .dd-item {
+      padding: 10px 14px; cursor: pointer;
+      font-size: 0.88rem; border-bottom: 1px solid rgba(255,255,255,0.06);
+      display: flex; gap: 10px; align-items: center;
+    }
+    .dd-item:last-child { border-bottom: none; }
+    .dd-item:hover { background: rgba(224,201,127,0.12); }
+    .dd-item .dd-code { color: #e0c97f; font-weight: 700; min-width: 32px; }
+    .dd-item .dd-name { color: #eee; }
+    .dd-item .dd-match { color: #e0c97f; font-weight: 700; }
+
+    /* Display + numpad */
+    #display {
+      width: 100%;
+      background: rgba(255,255,255,0.08);
+      border: 2px solid #e0c97f; border-radius: 12px;
+      padding: 10px 18px; font-size: 2.2rem;
+      text-align: right; letter-spacing: 8px;
+      color: #fff; min-height: 60px;
+    }
+    #preview {
+      width: 100%; min-height: 36px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.9rem; font-weight: 600; text-align: center;
+      border-radius: 8px; padding: 6px 10px;
+      transition: all 0.2s;
+    }
+    #preview.match {
+      background: rgba(224,201,127,0.12);
+      border: 1px solid rgba(224,201,127,0.35);
+      color: #e0c97f;
+    }
+    #preview.no-match {
+      background: rgba(220,80,80,0.1);
+      border: 1px solid rgba(220,80,80,0.3);
+      color: #f88;
+    }
+    #preview.empty { border: none; background: none; }
+
+    #qty-wrap {
+      display: flex; align-items: center; width: 100%;
+      background: rgba(255,255,255,0.06);
+      border: 1.5px solid rgba(224,201,127,0.35);
+      border-radius: 10px; overflow: hidden;
+    }
+    .qty-step {
+      width: 44px; height: 40px; border: none;
+      background: rgba(255,255,255,0.07); color: #e0c97f;
+      font-size: 1.3rem; font-weight: 700; cursor: pointer;
+      transition: background 0.15s;
+    }
+    .qty-step:hover { background: rgba(224,201,127,0.2); }
+    .qty-step:active { background: rgba(224,201,127,0.35); }
+    #qty-display {
+      flex: 1; text-align: center; font-size: 1.1rem;
+      font-weight: 700; color: #fff;
+    }
+    #status { font-size: 0.75rem; color: #aaa; text-align: center; height: 16px; }
+
+    .numpad {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 8px; width: 100%;
+    }
+    .btn {
+      height: 62px; border-radius: 12px; border: none;
+      font-size: 1.5rem; font-weight: bold; cursor: pointer;
+      transition: transform 0.1s, background 0.15s; user-select: none;
+    }
+    .btn:active { transform: scale(0.92); }
+    .btn-num {
+      background: rgba(255,255,255,0.1); color: #fff;
+      border: 1px solid rgba(255,255,255,0.18);
+    }
+    .btn-num:hover { background: rgba(255,255,255,0.2); }
+    .btn-del { background: rgba(220,80,80,0.7); color: #fff; }
+    .btn-order {
+      grid-column: span 3; height: 54px;
+      background: linear-gradient(135deg, #e0c97f, #c8a84b);
+      color: #1a1a2e; font-size: 1rem; letter-spacing: 1px;
+      border-radius: 12px;
+    }
+
+    /* ── RIGHT PANEL ── */
+    #right {
+      flex: 1; display: flex; flex-direction: column;
+      overflow: hidden; padding: 24px 28px; gap: 16px;
+    }
+
+    #right-header {
+      display: flex; align-items: center;
+      justify-content: space-between; flex-shrink: 0;
+    }
+    #right-header h2 {
+      font-size: 1.1rem; letter-spacing: 3px;
+      color: #e0c97f; text-transform: uppercase;
+    }
+    #btn-clear-all {
+      background: rgba(220,80,80,0.25);
+      border: 1px solid rgba(220,80,80,0.5);
+      color: #f88; font-size: 0.8rem;
+      padding: 6px 14px; border-radius: 8px; cursor: pointer;
+    }
+    #btn-clear-all:hover { background: rgba(220,80,80,0.5); color: #fff; }
+    #btn-send {
+      background: linear-gradient(135deg, #4caf7d, #2e7d52);
+      border: none; color: #fff; font-size: 0.9rem; font-weight: 700;
+      padding: 8px 20px; border-radius: 10px; cursor: pointer;
+      letter-spacing: 1px; transition: opacity 0.15s;
+    }
+    #btn-send:disabled { opacity: 0.35; cursor: default; }
+    #btn-send:not(:disabled):hover { opacity: 0.85; }
+
+    /* Tab bar for tables */
+    #table-tabs {
+      display: flex; gap: 6px; flex-wrap: wrap; flex-shrink: 0;
+    }
+    .tab-btn {
+      padding: 5px 14px; border-radius: 20px;
+      border: 1.5px solid rgba(224,201,127,0.35);
+      background: rgba(255,255,255,0.06); color: #aaa;
+      font-size: 0.82rem; cursor: pointer; transition: background 0.15s;
+      position: relative;
+    }
+    .tab-btn.active {
+      background: rgba(224,201,127,0.18);
+      border-color: #e0c97f; color: #e0c97f; font-weight: 700;
+    }
+    .tab-btn .tab-count {
+      display: inline-block; background: #e0c97f; color: #1a1a2e;
+      border-radius: 10px; font-size: 0.7rem; font-weight: 700;
+      padding: 0 5px; margin-left: 4px; line-height: 1.4;
+    }
+
+    /* Order list */
+    #order-empty {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 12px; opacity: 0.35;
+    }
+    #order-empty .icon { font-size: 4rem; }
+    #order-empty p { font-size: 1rem; letter-spacing: 2px; text-transform: uppercase; }
+
+    #order-list {
+      flex: 1; overflow-y: auto; display: flex;
+      flex-direction: column; gap: 10px;
+    }
+    #order-list::-webkit-scrollbar { width: 4px; }
+    #order-list::-webkit-scrollbar-thumb { background: rgba(224,201,127,0.3); border-radius: 4px; }
+
+    .order-item {
+      display: flex; align-items: center; gap: 12px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 12px; padding: 12px 16px;
+      border-left: 3px solid #e0c97f;
+      animation: fadeIn 0.25s ease;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateX(16px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    .order-item .oi-qty {
+      font-size: 1.4rem; font-weight: 700;
+      color: #e0c97f; min-width: 36px; text-align: center;
+    }
+    .order-item .oi-info { flex: 1; }
+    .order-item .oi-name { font-size: 1rem; color: #fff; font-weight: 600; }
+    .order-item .oi-meta { font-size: 0.78rem; color: #aaa; margin-top: 2px; }
+    .order-item .oi-actions { display: flex; gap: 6px; }
+
+    .oi-btn {
+      height: 32px; padding: 0 10px; border-radius: 8px;
+      border: none; font-size: 0.78rem; cursor: pointer;
+      font-weight: 600; transition: background 0.15s;
+    }
+    .oi-btn-table {
+      background: rgba(224,201,127,0.15);
+      border: 1px solid rgba(224,201,127,0.4); color: #e0c97f;
+    }
+    .oi-btn-table:hover { background: rgba(224,201,127,0.3); }
+    .oi-btn-del {
+      background: rgba(220,80,80,0.2);
+      border: 1px solid rgba(220,80,80,0.4); color: #f88;
+    }
+    .oi-btn-del:hover { background: rgba(220,80,80,0.5); color: #fff; }
+
+    /* Modal for change table */
+    #modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6); z-index: 500;
+      align-items: center; justify-content: center;
+    }
+    #modal-overlay.open { display: flex; }
+    #modal {
+      background: #16213e; border: 1px solid #e0c97f;
+      border-radius: 16px; padding: 24px; width: 280px;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+    #modal h3 { color: #e0c97f; font-size: 0.9rem; letter-spacing: 2px; text-transform: uppercase; }
+    #modal-grid {
+      display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;
+    }
+    .modal-tbl {
+      height: 44px; border-radius: 10px;
+      border: 1.5px solid rgba(224,201,127,0.35);
+      background: rgba(255,255,255,0.07); color: #e0c97f;
+      font-size: 1rem; font-weight: 700; cursor: pointer;
+    }
+    .modal-tbl:hover { background: rgba(224,201,127,0.2); }
+    #modal-cancel {
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #aaa; padding: 8px; border-radius: 10px;
+      cursor: pointer; font-size: 0.9rem;
+    }
+    #modal-cancel:hover { background: rgba(220,80,80,0.3); color: #fff; }
+  </style>
+</head>
+<body>
+
+<!-- LEFT: Input panel -->
+<div id="left">
+  <h1>🍵 Đặt Món</h1>
+
+  <span class="table-label">Chọn bàn</span>
+  <div id="table-grid"></div>
+
+  <div id="search-wrap">
+    <input id="search-input" type="text" placeholder="🔍 Tìm theo tên món..."
+           oninput="onSearchInput(this.value)" autocomplete="off" />
+    <div id="search-dropdown"></div>
+  </div>
+
+  <div id="display">_</div>
+  <div id="preview" class="empty"></div>
+  <div id="qty-wrap">
+    <button class="qty-step" onclick="changeQty(-1)">−</button>
+    <span id="qty-display">1</span>
+    <button class="qty-step" onclick="changeQty(1)">+</button>
+  </div>
+  <div id="status">Đang tải dữ liệu...</div>
+
+  <div class="numpad">
+    <button class="btn btn-num" onclick="press('7')">7</button>
+    <button class="btn btn-num" onclick="press('8')">8</button>
+    <button class="btn btn-num" onclick="press('9')">9</button>
+    <button class="btn btn-num" onclick="press('4')">4</button>
+    <button class="btn btn-num" onclick="press('5')">5</button>
+    <button class="btn btn-num" onclick="press('6')">6</button>
+    <button class="btn btn-num" onclick="press('1')">1</button>
+    <button class="btn btn-num" onclick="press('2')">2</button>
+    <button class="btn btn-num" onclick="press('3')">3</button>
+    <button class="btn btn-del" onclick="del()">⌫</button>
+    <button class="btn btn-num" onclick="press('0')">0</button>
+    <button class="btn btn-order" onclick="addOrder()">✚ Thêm Món</button>
+  </div>
+</div>
+
+<!-- RIGHT: Order list -->
+<div id="right">
+  <div id="right-header">
+    <h2>🧾 Danh Sách Gọi Món</h2>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button id="btn-send" onclick="sendOrders()" disabled>📤 Gửi Đơn</button>
+      <button id="btn-clear-all" onclick="clearAll()">🗑 Xóa tất cả</button>
+    </div>
+  </div>
+
+  <div id="table-tabs"></div>
+
+  <div id="order-empty">
+    <div class="icon">🍵</div>
+    <p>Chưa có món nào được gọi</p>
+  </div>
+
+  <div id="order-list" style="display:none"></div>
+</div>
+
+<!-- Modal: change table -->
+<div id="modal-overlay">
+  <div id="modal">
+    <h3>Chuyển sang bàn</h3>
+    <div id="modal-grid"></div>
+    <button id="modal-cancel" onclick="closeModal()">Hủy</button>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  import { getDatabase, ref, push } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAWgDT99kbQlTzOG76xVImqtu3tRGPfstI",
+    authDomain: "quanlyphachequan.firebaseapp.com",
+    databaseURL: "https://quanlyphachequan-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "quanlyphachequan",
+    storageBucket: "quanlyphachequan.firebasestorage.app",
+    messagingSenderId: "522540933651",
+    appId: "1:522540933651:web:acbe8224f1db47b2d895e6"
+  };
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+
+  const API_URL = 'https://script.google.com/macros/s/AKfycbxRdkktSsPqkkiYUE9_lJfvqpnzQaKzn7xZ597jPpXaEfJWwWsy1xjgN9pCkRZSOCJl/exec';
+  let menuData = [];
+  let input = '';
+  let selectedTable = 1;
+  let activeTab = 'all';   // 'all' | 1..10
+  let orders = [];         // { id, name, stt, qty, table, time }
+  let pendingItem = null;  // item waiting for table change
+  let nextId = 1;
+
+  // ── Init table buttons (left panel) ──
+  const tableGrid = document.getElementById('table-grid');
+  for (let i = 1; i <= 10; i++) {
+    const b = document.createElement('button');
+    b.className = 'tbl-btn' + (i === 1 ? ' active' : '');
+    b.textContent = i;
+    b.onclick = () => selectTable(i);
+    tableGrid.appendChild(b);
+  }
+
+  function selectTable(n) {
+    selectedTable = n;
+    document.querySelectorAll('.tbl-btn').forEach((b, i) =>
+      b.classList.toggle('active', i + 1 === n));
+  }
+
+  // ── Load menu ──
+  fetch(API_URL)
+    .then(r => r.json())
+    .then(json => {
+      menuData = Array.isArray(json) ? json : [];
+      document.getElementById('status').textContent = `✅ ${menuData.length} món`;
+    })
+    .catch(() => {
+      document.getElementById('status').textContent = '⚠️ Không tải được dữ liệu';
+    });
+
+  // ── Search ──
+  window.onSearchInput = function(val) {
+    const dd = document.getElementById('search-dropdown');
+    const q = val.trim().toLowerCase();
+    if (q.length < 2) { dd.classList.remove('open'); return; }
+    const results = menuData.filter(d =>
+      (d['Tên Món'] || '').toLowerCase().includes(q)).slice(0, 8);
+    if (!results.length) { dd.classList.remove('open'); return; }
+    dd.innerHTML = results.map(d => {
+      const name = d['Tên Món'] || '';
+      const hl = name.replace(new RegExp(`(${q})`, 'gi'), '<span class="dd-match">$1</span>');
+      return `<div class="dd-item" onclick="selectFromSearch(${d['STT']})">
+        <span class="dd-code">#${d['STT']}</span>
+        <span class="dd-name">${hl}</span>
+      </div>`;
+    }).join('');
+    dd.classList.add('open');
+  };
+
+  window.selectFromSearch = function(stt) {
+    const item = menuData.find(d => parseInt(d['STT'], 10) === parseInt(stt, 10));
+    if (!item) return;
+    document.getElementById('search-input').value = '';
+    document.getElementById('search-dropdown').classList.remove('open');
+    const qty = selectedQty;
+    selectedQty = 1; document.getElementById('qty-display').textContent = 1;
+    placeOrder(item, qty);
+  };
+
+  document.addEventListener('click', e => {
+    if (!document.getElementById('search-wrap').contains(e.target))
+      document.getElementById('search-dropdown').classList.remove('open');
+  });
+
+  // ── Numpad ──
+  function updatePreview() {
+    const el = document.getElementById('preview');
+    if (!input) { el.className = 'empty'; el.textContent = ''; return; }
+    const item = menuData.find(d => parseInt(d['STT'], 10) === parseInt(input, 10));
+    if (item) {
+      el.className = 'match';
+      el.textContent = `✔ ${item['Tên Món']}`;
+    } else {
+      el.className = 'no-match';
+      el.textContent = 'Không tìm thấy món';
+    }
+  }
+
+  let selectedQty = 1;
+  window.changeQty = function(delta) {
+    selectedQty = Math.max(1, selectedQty + delta);
+    document.getElementById('qty-display').textContent = selectedQty;
+  };
+
+  window.press = d => { if (input.length >= 3) return; input += d; document.getElementById('display').textContent = input; updatePreview(); };
+  window.del   = () => { input = input.slice(0, -1); document.getElementById('display').textContent = input || '_'; updatePreview(); };
+
+  window.addOrder = function() {
+    if (!input) return;
+    const num = parseInt(input, 10);
+    const item = menuData.find(d => parseInt(d['STT'], 10) === num);
+    const qty = selectedQty;
+    selectedQty = 1; document.getElementById('qty-display').textContent = 1;
+    input = ''; document.getElementById('display').textContent = '_'; updatePreview();
+    if (!item) { alert(`Không tìm thấy món số ${num}`); return; }
+    placeOrder(item, qty);
+  };
+
+  document.addEventListener('keydown', e => {
+    if (e.key >= '0' && e.key <= '9') window.press(e.key);
+    else if (e.key === 'Backspace') window.del();
+    else if (e.key === 'Enter') window.addOrder();
+  });
+
+  // ── Order logic ──
+  function placeOrder(item, qty) {
+    orders.push({
+      id: nextId++,
+      stt: item['STT'],
+      name: item['Tên Món'] || `Món #${item['STT']}`,
+      qty,
+      table: selectedTable,
+      time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+    });
+    renderAll();
+  }
+
+  window.sendOrders = function() {
+    if (!orders.length) return;
+    const ordersRef = ref(db, 'orders');
+    orders.forEach(o => push(ordersRef, {
+      item: o.name,
+      quantity: o.qty,
+      table: o.table,
+      time: o.time,
+      status: 'Chờ pha'
+    }));
+    orders = [];
+    renderAll();
+  };
+
+  window.updateQty = function(id, delta) {
+    const o = orders.find(o => o.id === id);
+    if (!o) return;
+    o.qty = Math.max(1, o.qty + delta);
+    renderAll();
+  };
+
+  window.removeOrder = function(id) {
+    orders = orders.filter(o => o.id !== id);
+    renderAll();
+  };
+
+  window.clearAll = function() {
+    if (!orders.length) return;
+    if (confirm('Xóa tất cả đơn?')) { orders = []; renderAll(); }
+  };
+
+  function updateSendBtn() {
+    document.getElementById('btn-send').disabled = orders.length === 0;
+  }
+
+  // ── Change table modal ──
+  let changingId = null;
+  window.openChangeTable = function(id) {
+    changingId = id;
+    const grid = document.getElementById('modal-grid');
+    grid.innerHTML = '';
+    for (let i = 1; i <= 10; i++) {
+      const b = document.createElement('button');
+      b.className = 'modal-tbl';
+      b.textContent = i;
+      b.onclick = () => { applyChangeTable(i); };
+      grid.appendChild(b);
+    }
+    document.getElementById('modal-overlay').classList.add('open');
+  };
+
+  function applyChangeTable(newTable) {
+    const o = orders.find(o => o.id === changingId);
+    if (o) o.table = newTable;
+    closeModal();
+    renderAll();
+  }
+
+  window.closeModal = function() {
+    document.getElementById('modal-overlay').classList.remove('open');
+    changingId = null;
+  };
+
+  // ── Render ──
+  function renderAll() {
+    renderTabs();
+    renderList();
+    updateSendBtn();
+  }
+
+  function renderTabs() {
+    const tabs = document.getElementById('table-tabs');
+    const usedTables = [...new Set(orders.map(o => o.table))].sort((a, b) => a - b);
+
+    const allCount = orders.length;
+    let html = `<button class="tab-btn ${activeTab === 'all' ? 'active' : ''}" onclick="setTab('all')">
+      Tất cả <span class="tab-count">${allCount}</span></button>`;
+
+    usedTables.forEach(t => {
+      const cnt = orders.filter(o => o.table === t).length;
+      html += `<button class="tab-btn ${activeTab === t ? 'active' : ''}" onclick="setTab(${t})">
+        Bàn ${t} <span class="tab-count">${cnt}</span></button>`;
+    });
+
+    // If activeTab is a table no longer in orders, reset
+    if (activeTab !== 'all' && !usedTables.includes(activeTab)) activeTab = 'all';
+
+    tabs.innerHTML = html;
+  }
+
+  window.setTab = function(t) {
+    activeTab = t === 'all' ? 'all' : parseInt(t, 10);
+    renderAll();
+  };
+
+  function renderList() {
+    const listEl = document.getElementById('order-list');
+    const emptyEl = document.getElementById('order-empty');
+
+    const filtered = activeTab === 'all' ? orders : orders.filter(o => o.table === activeTab);
+
+    if (!filtered.length) {
+      listEl.style.display = 'none';
+      emptyEl.style.display = 'flex';
+      return;
+    }
+
+    emptyEl.style.display = 'none';
+    listEl.style.display = 'flex';
+
+    listEl.innerHTML = filtered.map(o => `
+      <div class="order-item">
+        <div class="oi-qty" style="display:flex;align-items:center;gap:4px">
+          <button class="qty-step" style="width:26px;height:26px;font-size:1rem;border-radius:6px" onclick="updateQty(${o.id},-1)">−</button>
+          <span style="min-width:28px;text-align:center">×${o.qty}</span>
+          <button class="qty-step" style="width:26px;height:26px;font-size:1rem;border-radius:6px" onclick="updateQty(${o.id},1)">+</button>
+        </div>
+        <div class="oi-info">
+          <div class="oi-name">${o.name}</div>
+          <div class="oi-meta">#${o.stt} · Bàn ${o.table} · ${o.time}</div>
+        </div>
+        <div class="oi-actions">
+          <button class="oi-btn oi-btn-table" onclick="openChangeTable(${o.id})">🔄 Bàn</button>
+          <button class="oi-btn oi-btn-del" onclick="removeOrder(${o.id})">✕</button>
+        </div>
+      </div>`).join('');
+  }
+
+  renderAll();
+</script>
+</body>
+</html>

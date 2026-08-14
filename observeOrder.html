@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>Quầy Pha Chế · KDS</title>
+<style>
+  :root{
+    --bg:#f6f7f9;
+    --surface:#ffffff;
+    --surface-2:#fbfbfc;
+    --line:#e6e8ec;
+    --line-strong:#d5d9e0;
+    --ink:#16191f;
+    --ink-2:#5b6472;
+    --ink-3:#8c95a4;
+    --brand:#0f766e;
+    --brand-soft:#e6f4f1;
+    --ok:#16a34a;
+    --ok-soft:#e9f7ee;
+    --warn:#b45309;
+    --warn-soft:#fdf3e3;
+    --late:#c02626;
+    --late-soft:#fdecec;
+    --radius:14px;
+    --shadow-1:0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.06);
+    --shadow-2:0 4px 12px rgba(16,24,40,.08), 0 2px 4px rgba(16,24,40,.04);
+    --header-h:72px;
+  }
+
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    font-size:16px;
+    -webkit-font-smoothing:antialiased;
+    -webkit-tap-highlight-color:transparent;
+  }
+  button{font-family:inherit}
+
+  /* ============ HEADER ============ */
+  .topbar{
+    position:sticky; top:0; z-index:50;
+    height:var(--header-h);
+    display:flex; align-items:center; gap:18px;
+    padding:0 20px;
+    background:rgba(255,255,255,.88);
+    backdrop-filter:saturate(180%) blur(12px);
+    -webkit-backdrop-filter:saturate(180%) blur(12px);
+    border-bottom:1px solid var(--line);
+  }
+  .brand{display:flex; align-items:center; gap:12px; min-width:0}
+  .brand-mark{
+    width:40px;height:40px;flex:none;border-radius:11px;
+    background:var(--brand); color:#fff;
+    display:grid;place-items:center;font-size:20px;
+  }
+  .brand-text{min-width:0}
+  .brand-title{font-size:15px;font-weight:700;letter-spacing:-.01em;line-height:1.2}
+  .brand-sub{font-size:12px;color:var(--ink-3);line-height:1.3;margin-top:1px}
+
+  .topbar-spacer{flex:1}
+
+  .stat-group{display:flex; align-items:stretch; gap:0; border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--surface)}
+  .stat{padding:7px 16px; text-align:center; min-width:76px; border-right:1px solid var(--line)}
+  .stat:last-child{border-right:0}
+  .stat-num{font-size:20px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+  .stat-lbl{font-size:10.5px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em;margin-top:2px}
+  .stat.is-late .stat-num{color:var(--late)}
+  .stat.is-warn .stat-num{color:var(--warn)}
+
+  .clock{
+    font-variant-numeric:tabular-nums;
+    font-size:22px;font-weight:600;letter-spacing:-.02em;
+    padding-left:4px;
+  }
+  .clock small{display:block;font-size:11px;font-weight:500;color:var(--ink-3);letter-spacing:0}
+
+  .icon-btn{
+    height:40px; min-width:40px; padding:0 13px;
+    display:inline-flex;align-items:center;gap:7px;justify-content:center;
+    border:1px solid var(--line-strong); background:var(--surface);
+    border-radius:10px; cursor:pointer;
+    font-size:13.5px; font-weight:600; color:var(--ink-2);
+    transition:.15s;
+  }
+  .icon-btn:hover{background:var(--surface-2); border-color:var(--ink-3)}
+  .icon-btn.on{background:var(--brand-soft); border-color:var(--brand); color:var(--brand)}
+
+  .conn{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--ink-2)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--ink-3)}
+  .conn.online .dot{background:var(--ok); box-shadow:0 0 0 3px var(--ok-soft)}
+  .conn.offline .dot{background:var(--late); box-shadow:0 0 0 3px var(--late-soft)}
+
+  /* ============ TOOLBAR ============ */
+  .toolbar{
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    padding:14px 20px;
+    border-bottom:1px solid var(--line);
+    background:var(--surface);
+  }
+  .seg{display:inline-flex;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:3px;gap:2px}
+  .seg button{
+    border:0;background:transparent;cursor:pointer;
+    padding:7px 15px;border-radius:8px;
+    font-size:13.5px;font-weight:600;color:var(--ink-2);transition:.15s;
+  }
+  .seg button.active{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-1)}
+
+  .chips{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+  .chip{
+    border:1px solid var(--line-strong);background:var(--surface);
+    padding:7px 13px;border-radius:999px;cursor:pointer;
+    font-size:13px;font-weight:600;color:var(--ink-2);
+    display:inline-flex;align-items:center;gap:6px;transition:.15s;
+  }
+  .chip:hover{border-color:var(--ink-3)}
+  .chip.active{background:var(--ink);border-color:var(--ink);color:#fff}
+  .chip .cnt{
+    font-size:11px;padding:1px 6px;border-radius:999px;
+    background:var(--bg);color:var(--ink-2);font-variant-numeric:tabular-nums;
+  }
+  .chip.active .cnt{background:rgba(255,255,255,.22);color:#fff}
+  .tb-label{font-size:12px;font-weight:600;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em;margin-right:2px}
+
+  /* ============ BOARD ============ */
+  .board{padding:20px; padding-bottom:60px}
+
+  .group{margin-bottom:26px}
+  .group-head{
+    display:flex;align-items:center;gap:12px;
+    margin-bottom:12px;
+  }
+  .group-title{font-size:15px;font-weight:700;letter-spacing:-.01em}
+  .group-count{font-size:12.5px;color:var(--ink-3);font-weight:600}
+  .group-rule{flex:1;height:1px;background:var(--line)}
+  .btn-clear-group{
+    border:1px solid var(--line-strong);background:var(--surface);
+    padding:6px 13px;border-radius:8px;cursor:pointer;
+    font-size:12.5px;font-weight:600;color:var(--ink-2);transition:.15s;
+  }
+  .btn-clear-group:hover{background:var(--ok-soft);border-color:var(--ok);color:var(--ok)}
+
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(272px,1fr));
+    gap:14px;
+  }
+
+  /* ============ TICKET ============ */
+  .ticket{
+    position:relative;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow-1);
+    padding:15px 16px 14px;
+    display:flex;flex-direction:column;gap:12px;
+    animation:pop .28s cubic-bezier(.2,.9,.3,1.2);
+    transition:box-shadow .18s, transform .18s, opacity .2s;
+  }
+  .ticket::before{
+    content:"";position:absolute;left:0;top:14px;bottom:14px;width:3px;
+    border-radius:0 3px 3px 0;background:var(--line-strong);
+    transition:background .3s;
+  }
+  .ticket:hover{box-shadow:var(--shadow-2)}
+  .ticket.age-warn::before{background:var(--warn)}
+  .ticket.age-late::before{background:var(--late)}
+  .ticket.done{opacity:0;transform:scale(.96);pointer-events:none}
+  @keyframes pop{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
+
+  .t-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+  .t-table{
+    display:inline-flex;align-items:baseline;gap:5px;
+    background:var(--brand-soft);color:var(--brand);
+    padding:4px 11px;border-radius:8px;
+    font-size:13px;font-weight:700;
+  }
+  .t-table b{font-size:16px;letter-spacing:-.02em}
+  .t-time{
+    text-align:right;font-size:12px;color:var(--ink-3);
+    font-variant-numeric:tabular-nums;line-height:1.4;white-space:nowrap;
+  }
+  .t-elapsed{
+    display:inline-flex;align-items:center;gap:5px;
+    font-size:12.5px;font-weight:700;color:var(--ink-2);
+  }
+  .age-warn .t-elapsed{color:var(--warn)}
+  .age-late .t-elapsed{color:var(--late)}
+  .age-late .t-elapsed::before{
+    content:"";width:6px;height:6px;border-radius:50%;background:currentColor;
+    animation:blink 1.1s ease-in-out infinite;
+  }
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+
+  .t-body{display:flex;align-items:center;gap:12px}
+  .t-qty{
+    flex:none;width:46px;height:46px;border-radius:11px;
+    background:var(--ink);color:#fff;
+    display:grid;place-items:center;
+    font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;
+    letter-spacing:-.02em;
+  }
+  .t-name{
+    font-size:17px;font-weight:650;line-height:1.28;letter-spacing:-.01em;
+    word-break:break-word;
+  }
+
+  .t-done{
+    width:100%;border:0;cursor:pointer;
+    background:var(--ink);color:#fff;
+    padding:12px;border-radius:10px;
+    font-size:14.5px;font-weight:700;letter-spacing:.01em;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    transition:.15s;
+  }
+  .t-done:hover{background:var(--ok)}
+  .t-done:active{transform:scale(.98)}
+  .t-done[disabled]{opacity:.5;cursor:default}
+
+  /* ---- yêu cầu hủy từ thu ngân ---- */
+  .ticket.cx-req{
+    border-color:var(--late);background:#fffafa;
+    box-shadow:0 0 0 3px var(--late-soft),var(--shadow-2);
+    animation:pop .28s cubic-bezier(.2,.9,.3,1.2), attn 1.6s ease-in-out infinite;
+  }
+  @keyframes attn{0%,100%{box-shadow:0 0 0 3px var(--late-soft),var(--shadow-2)}
+                  50%{box-shadow:0 0 0 7px var(--late-soft),var(--shadow-2)}}
+  .ticket.cx-req::before{background:var(--late)}
+  .cx-note{
+    font-size:13px;line-height:1.45;color:var(--ink-2);
+    background:var(--late-soft);border:1px solid #f3cfcf;border-radius:10px;padding:9px 11px;
+  }
+  .cx-note b{display:block;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--late);margin-bottom:3px}
+  .cx-tag{
+    font-size:11.5px;font-weight:700;color:var(--ink-3);
+    text-transform:uppercase;letter-spacing:.05em;
+  }
+  .t-acts{display:flex;gap:8px}
+  .t-acts button{
+    flex:1;border:1px solid var(--line-strong);background:var(--surface);
+    padding:12px 8px;border-radius:10px;cursor:pointer;
+    font-size:13.5px;font-weight:700;color:var(--ink-2);transition:.15s;
+  }
+  .t-acts button:active{transform:scale(.98)}
+  .t-reject:hover{background:var(--surface-2);border-color:var(--ink);color:var(--ink)}
+  .t-approve{background:var(--late)!important;border-color:var(--late)!important;color:#fff!important}
+  .t-approve:hover{background:#a51f1f!important;border-color:#a51f1f!important}
+  .stat.is-cx .stat-num{color:var(--late)}
+
+  /* ============ EMPTY ============ */
+  .empty{
+    text-align:center;padding:90px 20px;color:var(--ink-3);
+  }
+  .empty-icon{
+    width:76px;height:76px;margin:0 auto 20px;border-radius:22px;
+    background:var(--surface);border:1px solid var(--line);
+    display:grid;place-items:center;font-size:34px;box-shadow:var(--shadow-1);
+  }
+  .empty h2{margin:0 0 6px;font-size:18px;font-weight:700;color:var(--ink-2)}
+  .empty p{margin:0;font-size:14px}
+
+  /* ============ POPUP CÔNG THỨC ============ */
+  .ticket{cursor:pointer}
+  .t-recipe-hint{
+    flex:none;margin-left:auto;
+    display:inline-flex;align-items:center;gap:5px;
+    font-size:11px;font-weight:700;color:var(--brand);
+    background:var(--brand-soft);border:1px solid #cfe8e4;
+    padding:4px 9px;border-radius:999px;white-space:nowrap;
+  }
+
+  .rc-back{
+    position:fixed;inset:0;z-index:90;
+    background:rgba(16,24,40,.45);
+    backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;
+    padding:24px;
+    opacity:0;pointer-events:none;transition:opacity .18s;
+  }
+  .rc-back.show{opacity:1;pointer-events:auto}
+
+  .rc-card{
+    background:var(--surface);
+    border-radius:18px;
+    box-shadow:0 24px 60px rgba(16,24,40,.28);
+    width:min(880px,100%);
+    max-height:min(88vh,780px);
+    display:flex;flex-direction:column;overflow:hidden;
+    transform:translateY(14px) scale(.985);
+    transition:transform .2s cubic-bezier(.2,.9,.3,1.15);
+  }
+  .rc-back.show .rc-card{transform:none}
+
+  .rc-head{
+    display:flex;align-items:flex-start;gap:14px;
+    padding:18px 20px 16px;border-bottom:1px solid var(--line);
+  }
+  .rc-head-main{flex:1;min-width:0}
+  .rc-kicker{
+    font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;
+    color:var(--brand);margin-bottom:5px;
+  }
+  .rc-name{font-size:23px;font-weight:700;letter-spacing:-.02em;line-height:1.2;word-break:break-word}
+  .rc-tags{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}
+  .rc-tag{
+    font-size:12px;font-weight:600;color:var(--ink-2);
+    background:var(--bg);border:1px solid var(--line);
+    padding:3px 10px;border-radius:999px;
+  }
+  .rc-tag.brand{background:var(--brand-soft);border-color:#cfe8e4;color:var(--brand)}
+  .rc-close{
+    flex:none;width:38px;height:38px;border-radius:50%;
+    border:1px solid var(--line-strong);background:var(--surface);
+    cursor:pointer;font-size:17px;color:var(--ink-2);
+    display:grid;place-items:center;transition:.15s;
+  }
+  .rc-close:hover{background:var(--late-soft);border-color:var(--late);color:var(--late)}
+
+  .rc-body{
+    flex:1;overflow-y:auto;padding:18px 20px;
+    display:grid;grid-template-columns:minmax(0,250px) minmax(0,1fr);
+    gap:20px;align-items:start;
+  }
+  .rc-img{
+    border-radius:14px;overflow:hidden;background:var(--bg);
+    border:1px solid var(--line);
+    aspect-ratio:1/1;display:grid;place-items:center;
+  }
+  .rc-img img{width:100%;height:100%;object-fit:cover;display:block}
+  .rc-img .noimg{font-size:46px;opacity:.25}
+
+  .rc-steps-label{
+    font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;
+    color:var(--ink-3);padding-bottom:8px;margin-bottom:10px;
+    border-bottom:1px solid var(--line);
+  }
+  .rc-step{
+    display:flex;gap:11px;align-items:flex-start;
+    background:var(--surface-2);border:1px solid var(--line);
+    border-left:3px solid var(--brand);
+    border-radius:10px;padding:10px 13px;margin-bottom:8px;
+  }
+  .rc-step-n{
+    flex:none;font-size:13px;font-weight:700;color:var(--brand);
+    min-width:18px;font-variant-numeric:tabular-nums;line-height:1.55;
+  }
+  .rc-step-t{font-size:14.5px;line-height:1.55;color:var(--ink);word-break:break-word}
+  .rc-msg{
+    grid-column:1/-1;text-align:center;color:var(--ink-3);
+    padding:38px 16px;font-size:14.5px;line-height:1.6;
+  }
+  .rc-msg .big{display:block;font-size:38px;margin-bottom:12px;opacity:.5}
+
+  .rc-foot{
+    padding:13px 20px;border-top:1px solid var(--line);background:var(--surface-2);
+    display:flex;align-items:center;gap:10px;
+  }
+  .rc-foot .hintkey{font-size:12.5px;color:var(--ink-3);flex:1}
+  .rc-btn-back{
+    border:1px solid var(--line-strong);background:var(--surface);
+    padding:10px 18px;border-radius:10px;cursor:pointer;
+    font-size:13.5px;font-weight:700;color:var(--ink-2);transition:.15s;
+  }
+  .rc-btn-back:hover{background:var(--ink);border-color:var(--ink);color:#fff}
+
+  @media (max-width:720px){
+    .rc-back{padding:0}
+    .rc-card{width:100%;max-height:100%;height:100%;border-radius:0}
+    .rc-body{grid-template-columns:1fr;gap:16px}
+    .rc-img{aspect-ratio:16/10;max-height:230px}
+    .rc-name{font-size:20px}
+  }
+
+  .toast{
+    position:fixed;left:50%;bottom:26px;transform:translate(-50%,20px);
+    background:var(--ink);color:#fff;
+    padding:11px 20px;border-radius:10px;
+    font-size:14px;font-weight:600;
+    box-shadow:var(--shadow-2);
+    opacity:0;pointer-events:none;transition:.25s;z-index:80;
+  }
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+  .toast.err{background:var(--late)}
+
+  /* ============ RESPONSIVE ============ */
+  @media (max-width:900px){
+    .brand-sub,.clock small{display:none}
+    .topbar{gap:12px;padding:0 14px}
+    .board{padding:14px}
+    .toolbar{padding:12px 14px}
+  }
+  @media (max-width:640px){
+    .clock,.stat-group .stat:nth-child(2){display:none}
+    .grid{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">☕</div>
+    <div class="brand-text">
+      <div class="brand-title">Quầy Pha Chế</div>
+      <div class="brand-sub">Kitchen Display System</div>
+    </div>
+  </div>
+
+  <div class="topbar-spacer"></div>
+
+  <div class="stat-group">
+    <div class="stat"><div class="stat-num" id="stPending">0</div><div class="stat-lbl">Đang chờ</div></div>
+    <div class="stat"><div class="stat-num" id="stTables">0</div><div class="stat-lbl">Bàn</div></div>
+    <div class="stat" id="stLateBox"><div class="stat-num" id="stLate">0</div><div class="stat-lbl">Quá 10′</div></div>
+    <div class="stat" id="stCxBox"><div class="stat-num" id="stCx">0</div><div class="stat-lbl">Xin hủy</div></div>
+  </div>
+
+  <div class="clock" id="clock">--:--<small id="clockDate">&nbsp;</small></div>
+
+  <button class="icon-btn" id="btnSound" title="Bật/tắt âm báo">🔔 <span id="soundTxt">Bật âm</span></button>
+
+  <div class="conn" id="conn"><span class="dot"></span><span id="connTxt">Đang kết nối…</span></div>
+</header>
+
+<div class="toolbar">
+  <span class="tb-label">Xem theo</span>
+  <div class="seg" id="segView">
+    <button data-view="table" class="active">Theo bàn</button>
+    <button data-view="time">Theo thời gian</button>
+  </div>
+  <span class="tb-label" style="margin-left:8px">Lọc bàn</span>
+  <div class="chips" id="tableChips"></div>
+</div>
+
+<main class="board" id="board"></main>
+
+<!-- ============ POPUP CÔNG THỨC ============ -->
+<div class="rc-back" id="rcBack" role="dialog" aria-modal="true" aria-labelledby="rcName">
+  <div class="rc-card" id="rcCard">
+    <div class="rc-head">
+      <div class="rc-head-main">
+        <div class="rc-kicker">Công thức</div>
+        <div class="rc-name" id="rcName">—</div>
+        <div class="rc-tags" id="rcTags"></div>
+      </div>
+      <button class="rc-close" id="rcClose" aria-label="Đóng công thức" title="Đóng (Esc)">✕</button>
+    </div>
+    <div class="rc-body" id="rcBody"></div>
+    <div class="rc-foot">
+      <span class="hintkey">Nhấn Esc hoặc bấm ra ngoài để quay lại danh sách</span>
+      <button class="rc-btn-back" id="rcBack2">← Về danh sách</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { getDatabase, ref, onChildAdded, onChildChanged, onChildRemoved, onValue, push, remove, update, serverTimestamp }
+  from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAWgDT99kbQlTzOG76xVImqtu3tRGPfstI",
+  authDomain: "quanlyphachequan.firebaseapp.com",
+  databaseURL: "https://quanlyphachequan-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "quanlyphachequan",
+  storageBucket: "quanlyphachequan.firebasestorage.app",
+  messagingSenderId: "522540933651",
+  appId: "1:522540933651:web:acbe8224f1db47b2d895e6"
+};
+
+const app = initializeApp(firebaseConfig);
+const db  = getDatabase(app);
+const ordersRef    = ref(db, 'orders');
+const historyRef   = ref(db, 'history');
+const cancelledRef = ref(db, 'cancelled');   // nhật ký món bị hủy (không tính vào thống kê)
+
+/* ---------- state ---------- */
+const tickets = new Map();          // key -> {item, quantity, table, time, at}
+let view = 'table';                 // 'table' | 'time'
+let filterTable = 'all';
+let soundOn = false;
+let audioCtx = null;
+let firstLoadDone = false;
+let rcKey = null;                   // key của món đang mở popup công thức
+
+const $ = id => document.getElementById(id);
+const board = $('board');
+
+/* ---------- helpers ---------- */
+// "HH:MM" (vi-VN) -> epoch ms, assuming today; if it lands >2h in the future it was yesterday
+function parseClock(str){
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(str || ''));
+  if (!m) return Date.now();
+  const d = new Date();
+  d.setHours(+m[1], +m[2], 0, 0);
+  if (d.getTime() - Date.now() > 2 * 3600e3) d.setDate(d.getDate() - 1);
+  return d.getTime();
+}
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function fmtElapsed(ms){
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + "′" + String(s % 60).padStart(2,'0') + "″";
+  return Math.floor(m/60) + "h" + String(m%60).padStart(2,'0');
+}
+function ageClass(ms){
+  const m = ms / 60000;
+  return m >= 10 ? 'age-late' : m >= 5 ? 'age-warn' : '';
+}
+const isReq = t => !!(t.cancel && t.cancel.state === 'requested');
+// yêu cầu hủy luôn nổi lên đầu, sau đó là món chờ lâu nhất
+const byUrgency = (a,b) => (isReq(b[1]) - isReq(a[1])) || (a[1].at - b[1].at);
+
+function toast(msg, isErr){
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isErr ? ' err' : '');
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.className = 'toast', 2600);
+}
+
+/* ---------- sound (WebAudio: no external file, works offline) ---------- */
+$('btnSound').onclick = () => {
+  soundOn = !soundOn;
+  $('btnSound').classList.toggle('on', soundOn);
+  $('soundTxt').textContent = soundOn ? 'Âm bật' : 'Bật âm';
+  if (soundOn){
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    audioCtx.resume();
+    beep();
+  }
+};
+function beep(){
+  if (!soundOn || !audioCtx) return;
+  const t0 = audioCtx.currentTime;
+  [880, 1320].forEach((f, i) => {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = 'sine'; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t0 + i * 0.13);
+    g.gain.exponentialRampToValueAtTime(0.22, t0 + i * 0.13 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + i * 0.13 + 0.12);
+    o.connect(g).connect(audioCtx.destination);
+    o.start(t0 + i * 0.13); o.stop(t0 + i * 0.13 + 0.14);
+  });
+}
+// âm cảnh báo riêng cho yêu cầu hủy — trầm, lặp 3 lần, dễ phân biệt với đơn mới
+function alarm(){
+  if (!soundOn || !audioCtx) return;
+  const t0 = audioCtx.currentTime;
+  for (let i = 0; i < 3; i++){
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = 'square'; o.frequency.value = 440;
+    const s = t0 + i * 0.22;
+    g.gain.setValueAtTime(0.0001, s);
+    g.gain.exponentialRampToValueAtTime(0.16, s + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, s + 0.17);
+    o.connect(g).connect(audioCtx.destination);
+    o.start(s); o.stop(s + 0.19);
+  }
+}
+
+/* ---------- clock ---------- */
+setInterval(() => {
+  const n = new Date();
+  $('clock').firstChild.nodeValue =
+    String(n.getHours()).padStart(2,'0') + ':' + String(n.getMinutes()).padStart(2,'0');
+  $('clockDate').textContent = n.toLocaleDateString('vi-VN',{weekday:'short',day:'2-digit',month:'2-digit'});
+}, 1000);
+
+/* ---------- connection badge ---------- */
+onValue(ref(db, '.info/connected'), snap => {
+  const on = snap.val() === true;
+  $('conn').className = 'conn ' + (on ? 'online' : 'offline');
+  $('connTxt').textContent = on ? 'Trực tuyến' : 'Mất kết nối';
+});
+
+/* ---------- render ---------- */
+function ticketHTML(key, t){
+  const el  = Date.now() - t.at;
+  const req = t.cancel && t.cancel.state === 'requested';
+  const rej = t.cancel && t.cancel.state === 'rejected';
+
+  const banner = req
+    ? `<div class="cx-note">
+         <b>⚠ Thu ngân xin hủy món này</b>
+         ${esc(t.cancel.reason || 'Không nêu lý do')}${t.cancel.note ? ' — ' + esc(t.cancel.note) : ''}
+       </div>` : '';
+
+  const actions = req
+    ? `<div class="t-acts">
+         <button class="t-reject" data-rej="${key}">✕ Từ chối</button>
+         <button class="t-approve" data-cxl="${key}">🗑 Đồng ý hủy</button>
+       </div>`
+    : `<button class="t-done" data-key="${key}">✓ Hoàn thành</button>`;
+
+  return `<article class="ticket ${req ? 'cx-req' : ageClass(el)}" id="tk-${key}" data-at="${t.at}">
+    <div class="t-top">
+      <span class="t-table">Bàn <b>${esc(t.table ?? '—')}</b></span>
+      <span class="t-time">
+        <span class="t-elapsed">${fmtElapsed(el)}</span><br>${esc(t.time ?? '')}
+      </span>
+    </div>
+    <div class="t-body">
+      <div class="t-qty">${Number(t.quantity) || 1}</div>
+      <div class="t-name">${esc(t.item)}</div>
+      <span class="t-recipe-hint">📋 Công thức</span>
+    </div>
+    ${banner}
+    ${rej ? '<div class="cx-tag">Đã từ chối yêu cầu hủy</div>' : ''}
+    ${actions}
+  </article>`;
+}
+
+function render(){
+  const all = [...tickets.entries()];
+  const tables = [...new Set(all.map(([,t]) => t.table ?? '—'))]
+    .sort((a,b) => (+a || 999) - (+b || 999));
+
+  // stats
+  $('stPending').textContent = all.length;
+  $('stTables').textContent  = tables.length;
+  const late = all.filter(([,t]) => Date.now() - t.at >= 600000).length;
+  $('stLate').textContent = late;
+  $('stLateBox').className = 'stat' + (late ? ' is-late' : '');
+  const cx = all.filter(([,t]) => t.cancel && t.cancel.state === 'requested').length;
+  $('stCx').textContent = cx;
+  $('stCxBox').className = 'stat' + (cx ? ' is-cx' : '');
+
+  // table filter chips
+  const chips = $('tableChips');
+  chips.innerHTML =
+    `<button class="chip ${filterTable==='all'?'active':''}" data-t="all">Tất cả <span class="cnt">${all.length}</span></button>` +
+    tables.map(t => {
+      const c = all.filter(([,x]) => (x.table ?? '—') == t).length;
+      return `<button class="chip ${filterTable==t?'active':''}" data-t="${esc(t)}">Bàn ${esc(t)} <span class="cnt">${c}</span></button>`;
+    }).join('');
+
+  // rows
+  let rows = all.filter(([,t]) => filterTable === 'all' || (t.table ?? '—') == filterTable);
+
+  if (!rows.length){
+    board.innerHTML = `<div class="empty">
+      <div class="empty-icon">${all.length ? '🔍' : '✨'}</div>
+      <h2>${all.length ? 'Không có món ở bộ lọc này' : 'Hết món chờ pha'}</h2>
+      <p>${all.length ? 'Chọn “Tất cả” để xem toàn bộ đơn.' : 'Đơn mới sẽ tự động hiện tại đây.'}</p>
+    </div>`;
+    return;
+  }
+
+  if (view === 'time'){
+    rows.sort(byUrgency);   // xin hủy lên đầu, rồi cũ nhất
+    board.innerHTML = `<div class="grid">${rows.map(([k,t]) => ticketHTML(k,t)).join('')}</div>`;
+  } else {
+    const groups = new Map();
+    rows.forEach(([k,t]) => {
+      const g = t.table ?? '—';
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g).push([k,t]);
+    });
+    const ordered = [...groups.entries()].sort((a,b) => (+a[0]||999) - (+b[0]||999));
+    board.innerHTML = ordered.map(([g, list]) => {
+      list.sort(byUrgency);
+      const qty = list.reduce((s,[,t]) => s + (Number(t.quantity)||1), 0);
+      return `<section class="group">
+        <div class="group-head">
+          <span class="group-title">Bàn ${esc(g)}</span>
+          <span class="group-count">${list.length} món · ${qty} ly</span>
+          <span class="group-rule"></span>
+          <button class="btn-clear-group" data-group="${esc(g)}">✓ Xong cả bàn</button>
+        </div>
+        <div class="grid">${list.map(([k,t]) => ticketHTML(k,t)).join('')}</div>
+      </section>`;
+    }).join('');
+  }
+
+  syncRecipePopup();
+}
+
+/* popup đang mở mà món được hoàn thành/hủy ở máy khác -> đóng lại, tránh xem công thức "mồ côi" */
+function syncRecipePopup(){
+  if (!rcKey) return;
+  if (!tickets.has(rcKey)){
+    closeRecipe();
+    toast('Món vừa xem đã rời danh sách chờ');
+  } else if ($('rcBack').classList.contains('show')){
+    paintRecipe();
+  }
+}
+
+/* live elapsed tick — updates text/colour only, no re-render */
+setInterval(() => {
+  let lateCount = 0;
+  document.querySelectorAll('.ticket').forEach(card => {
+    const el = Date.now() - Number(card.dataset.at);
+    const lbl = card.querySelector('.t-elapsed');
+    if (lbl) lbl.textContent = fmtElapsed(el);
+    if (card.classList.contains('cx-req')) return;   // thẻ xin hủy giữ nguyên màu đỏ
+    card.classList.remove('age-warn','age-late');
+    const c = ageClass(el);
+    if (c) card.classList.add(c);
+  });
+  tickets.forEach(t => { if (Date.now() - t.at >= 600000) lateCount++; });
+  $('stLate').textContent = lateCount;
+  $('stLateBox').className = 'stat' + (lateCount ? ' is-late' : '');
+}, 1000);
+
+/* ---------- events (delegated) ---------- */
+$('segView').onclick = e => {
+  const b = e.target.closest('button[data-view]'); if (!b) return;
+  view = b.dataset.view;
+  [...e.currentTarget.children].forEach(x => x.classList.toggle('active', x === b));
+  render();
+};
+$('tableChips').onclick = e => {
+  const b = e.target.closest('.chip'); if (!b) return;
+  filterTable = b.dataset.t;
+  render();
+};
+board.onclick = e => {
+  const done = e.target.closest('.t-done');
+  if (done){ complete(done.dataset.key, done); return; }
+
+  const cxl = e.target.closest('[data-cxl]');
+  if (cxl){ approveCancel(cxl.dataset.cxl, cxl); return; }
+
+  const rej = e.target.closest('[data-rej]');
+  if (rej){ rejectCancel(rej.dataset.rej); return; }
+
+  const grp = e.target.closest('.btn-clear-group');
+  if (grp){
+    const g = grp.dataset.group;
+    [...tickets.entries()]
+      .filter(([,t]) => (t.table ?? '—') == g && !isReq(t))   // bỏ qua món đang xin hủy
+      .forEach(([k]) => complete(k));
+    return;
+  }
+
+  // bấm vào phần còn lại của thẻ -> mở công thức của đúng món đó
+  const card = e.target.closest('.ticket');
+  if (card && card.id.startsWith('tk-')) openRecipe(card.id.slice(3));
+};
+
+/* ==================================================================
+   CÔNG THỨC — bấm vào thẻ món để xem, đóng lại là về danh sách
+   Dùng chung nguồn dữ liệu (sheet Menu) với trang Đặt món / Tra cứu.
+   ================================================================== */
+const RECIPE_API = 'https://script.google.com/macros/s/AKfycbxRdkktSsPqkkiYUE9_lJfvqpnzQaKzn7xZ597jPpXaEfJWwWsy1xjgN9pCkRZSOCJl/exec';
+
+let recipes = [];
+let recipeState = 'loading';          // 'loading' | 'ready' | 'error'
+
+// bỏ dấu + gom về a-z0-9 để dò tên cột / so tên món không phụ thuộc dấu, hoa thường
+const slug = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+                  .replace(/đ/gi,'d').toLowerCase().replace(/[^a-z0-9]/g,'');
+
+// tên cột trong sheet có thể viết khác nhau ("Định lượng" / "Định Lượng" / "Dinh luong"…)
+function pick(row, wanted){
+  if (!row) return '';
+  for (const k of Object.keys(row)){
+    if (wanted.includes(slug(k))) {
+      const v = row[k];
+      if (v !== null && v !== undefined && String(v).trim() !== '') return v;
+    }
+  }
+  return '';
+}
+const rcName  = r => String(pick(r, ['tenmon','ten','tenkhachgoi','name']) || '').trim();
+const rcGroup = r => String(pick(r, ['nhom','nhommon','group','loai']) || '').trim();
+const rcSteps = r => String(pick(r, ['dinhluong','congthuc','dinhluongcongthuc','recipe']) || '').trim();
+const rcImg   = r => String(pick(r, ['hinhanh','hinh','anh','image','img']) || '').trim();
+const rcStt   = r => pick(r, ['stt','so','id']);
+
+fetch(RECIPE_API)
+  .then(r => r.json())
+  .then(j => {
+    recipes = Array.isArray(j) ? j : [];
+    recipeState = recipes.length ? 'ready' : 'error';
+    if ($('rcBack').classList.contains('show')) paintRecipe();   // đang mở thì vẽ lại
+  })
+  .catch(() => { recipeState = 'error'; if ($('rcBack').classList.contains('show')) paintRecipe(); });
+
+/* tìm công thức cho một ticket: ưu tiên STT, không có thì so theo tên */
+function findRecipe(t){
+  if (!recipes.length) return null;
+  const stt = t.stt;
+  if (stt !== null && stt !== undefined && String(stt).trim() !== ''){
+    const hit = recipes.find(r => parseInt(rcStt(r),10) === parseInt(stt,10));
+    if (hit) return hit;
+  }
+  const key = slug(t.item);
+  if (!key) return null;
+  return recipes.find(r => slug(rcName(r)) === key) || null;
+}
+
+/* ---------- mở / đóng popup ---------- */
+function openRecipe(key){
+  if (!tickets.has(key)) return;
+  rcKey = key;
+  paintRecipe();
+  const back = $('rcBack');
+  back.classList.add('show');
+  document.body.style.overflow = 'hidden';
+  $('rcClose').focus();
+}
+
+function closeRecipe(){
+  rcKey = null;
+  $('rcBack').classList.remove('show');
+  document.body.style.overflow = '';
+}
+
+function paintRecipe(){
+  const t = rcKey && tickets.get(rcKey);
+  if (!t){ closeRecipe(); return; }
+
+  const rec  = findRecipe(t);
+  const name = (rec && rcName(rec)) || t.item || '—';
+  const qty  = Number(t.quantity) || 1;
+
+  $('rcName').textContent = name;
+
+  const sttShown = (rec && rcStt(rec)) || t.stt;
+  $('rcTags').innerHTML = [
+    sttShown ? `<span class="rc-tag brand">#${esc(sttShown)}</span>` : '',
+    rec && rcGroup(rec) ? `<span class="rc-tag">${esc(rcGroup(rec))}</span>` : '',
+    `<span class="rc-tag">Bàn ${esc(t.table ?? '—')}</span>`,
+    `<span class="rc-tag">${qty} ly</span>`,
+    t.time ? `<span class="rc-tag">${esc(t.time)}</span>` : ''
+  ].join('');
+
+  const body = $('rcBody');
+
+  if (!rec){
+    body.innerHTML = `<div class="rc-msg"><span class="big">${
+      recipeState === 'loading' ? '⏳' : recipeState === 'error' ? '⚠️' : '🔍'
+    }</span>${
+      recipeState === 'loading' ? 'Đang tải công thức…'
+      : recipeState === 'error' ? 'Không tải được danh sách công thức.<br>Kiểm tra kết nối rồi mở lại.'
+      : 'Chưa có công thức cho món này trong sheet Menu.'
+    }</div>`;
+    return;
+  }
+
+  // ảnh (Google Drive link -> ảnh xem trực tiếp)
+  const raw = rcImg(rec);
+  const dm  = raw.match(/\/d\/([a-zA-Z0-9_-]+)/) || raw.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  const imgHTML = dm
+    ? `<div class="rc-img"><img src="https://lh3.googleusercontent.com/d/${esc(dm[1])}" alt="${esc(name)}"
+         onerror="this.parentElement.innerHTML='<div class=&quot;noimg&quot;>☕</div>'"></div>`
+    : (/^https?:\/\//i.test(raw)
+        ? `<div class="rc-img"><img src="${esc(raw)}" alt="${esc(name)}"
+             onerror="this.parentElement.innerHTML='<div class=&quot;noimg&quot;>☕</div>'"></div>`
+        : `<div class="rc-img"><div class="noimg">☕</div></div>`);
+
+  // định lượng -> từng bước
+  const lines = rcSteps(rec).split('\n').map(s => s.trim()).filter(Boolean);
+  const stepsHTML = lines.length
+    ? `<div><div class="rc-steps-label">Định lượng</div>` +
+      lines.map((l,i) => `<div class="rc-step">
+          <span class="rc-step-n">${i+1}</span>
+          <span class="rc-step-t">${esc(l.replace(/^[-•*]\s*/,''))}</span>
+        </div>`).join('') + `</div>`
+    : `<div><div class="rc-steps-label">Định lượng</div>
+         <div class="rc-step"><span class="rc-step-t" style="color:var(--ink-3)">Sheet Menu chưa ghi định lượng cho món này.</span></div>
+       </div>`;
+
+  body.innerHTML = imgHTML + stepsHTML;
+}
+
+$('rcClose').onclick = closeRecipe;
+$('rcBack2').onclick = closeRecipe;
+// bấm ra vùng nền tối thì đóng, bấm trong thẻ thì không
+$('rcBack').onclick = e => { if (e.target === e.currentTarget) closeRecipe(); };
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && $('rcBack').classList.contains('show')){
+    e.preventDefault();
+    closeRecipe();
+  }
+});
+
+/* ---------- firebase listeners ---------- */
+onValue(ordersRef, () => { firstLoadDone = true; }, { onlyOnce:true });
+
+const toTicket = d => ({
+  item: d.item,
+  quantity: d.quantity,
+  table: d.table,
+  time: d.time,
+  stt: d.stt ?? null,
+  price: d.price ?? null,     // đơn giá đã chốt lúc thu ngân gửi đơn
+  cancel: d.cancel || null,
+  at: parseClock(d.time)
+});
+
+onChildAdded(ordersRef, snap => {
+  tickets.set(snap.key, toTicket(snap.val() || {}));
+  render();
+  if (firstLoadDone) beep();     // chỉ kêu với đơn mới, không kêu khi vừa mở trang
+});
+
+// thu ngân gửi / thu hồi yêu cầu hủy -> cập nhật tại chỗ
+onChildChanged(ordersRef, snap => {
+  const before = tickets.get(snap.key);
+  const after  = toTicket(snap.val() || {});
+  if (before) after.at = before.at;          // giữ nguyên mốc đếm giờ
+  tickets.set(snap.key, after);
+  render();
+  const wasReq = before && before.cancel && before.cancel.state === 'requested';
+  if (isReq(after) && !wasReq){
+    alarm();
+    toast('⚠ Thu ngân xin hủy: ' + after.item + ' (bàn ' + (after.table ?? '—') + ')', true);
+  }
+});
+
+onChildRemoved(ordersRef, snap => {
+  tickets.delete(snap.key);
+  render();
+});
+
+/* ---------- duyệt / từ chối yêu cầu hủy ---------- */
+function approveCancel(key, btn){
+  const t = tickets.get(key); if (!t) return;
+  if (btn){ btn.disabled = true; btn.textContent = '⏳ Đang hủy…'; }
+
+  const now = new Date();
+  const ngayStr = now.getFullYear() + '-' +
+                  String(now.getMonth()+1).padStart(2,'0') + '-' +
+                  String(now.getDate()).padStart(2,'0');
+
+  // ghi nhật ký vào nhánh 'cancelled' — KHÔNG vào 'history' vì món không được pha
+  push(cancelledRef, {
+    item: t.item,
+    quantity: Number(t.quantity) || 1,
+    table: t.table ?? null,
+    stt: t.stt ?? null,
+    price: t.price ?? null,
+    lostRevenue: t.price != null ? t.price * (Number(t.quantity) || 1) : null,
+    reason: (t.cancel && t.cancel.reason) || null,
+    note: (t.cancel && t.cancel.note) || null,
+    orderedTime: t.time ?? null,
+    cancelledDate: ngayStr,
+    cancelledMonth: ngayStr.substring(0,7),
+    cancelledYear: ngayStr.substring(0,4),
+    timestamp: serverTimestamp()
+  })
+  .then(() => remove(ref(db, 'orders/' + key)))
+  .then(() => toast('Đã hủy: ' + t.item))
+  .catch(err => {
+    console.error('Lỗi khi hủy món:', err);
+    if (btn){ btn.disabled = false; btn.textContent = '🗑 Đồng ý hủy'; }
+    toast('Không hủy được — kiểm tra quyền ghi (.write)', true);
+  });
+}
+
+function rejectCancel(key){
+  const t = tickets.get(key); if (!t) return;
+  const barNote = prompt('Lý do từ chối (gửi lại cho thu ngân):', 'Món đã pha xong / đang pha');
+  if (barNote === null) return;
+  update(ref(db, 'orders/' + key), {
+    cancel: {
+      state: 'rejected',
+      reason: (t.cancel && t.cancel.reason) || null,
+      barNote: barNote.trim() || 'Món đã/đang được pha.',
+      at: serverTimestamp()
+    }
+  })
+  .then(() => toast('Đã từ chối yêu cầu hủy'))
+  .catch(err => { console.error(err); toast('Không gửi được phản hồi', true); });
+}
+
+/* ---------- complete: history -> remove ---------- */
+function complete(key, btn){
+  const t = tickets.get(key);
+  if (!t) return;
+  if (btn){ btn.disabled = true; btn.textContent = '⏳ Đang lưu…'; }
+  const card = document.getElementById('tk-' + key);
+  if (card) card.classList.add('done');
+
+  // Ngày theo GIỜ ĐỊA PHƯƠNG (không dùng toISOString — sẽ lệch 1 ngày ở múi giờ +07)
+  const now = new Date();
+  const ngayStr  = now.getFullYear() + '-' +
+                   String(now.getMonth() + 1).padStart(2, '0') + '-' +
+                   String(now.getDate()).padStart(2, '0');   // YYYY-MM-DD
+  const thangStr = ngayStr.substring(0, 7);                  // YYYY-MM
+
+  push(historyRef, {
+    item: t.item,
+    quantity: Number(t.quantity) || 1,
+    table: t.table ?? null,
+    stt: t.stt ?? null,
+    price: t.price ?? null,            // đơn giá lúc bán -> trang Thống kê tính doanh thu
+    revenue: t.price != null ? t.price * (Number(t.quantity) || 1) : null,
+    completedDate: ngayStr,
+    completedMonth: thangStr,
+    completedYear: ngayStr.substring(0,4),
+    timestamp: serverTimestamp()
+  })
+  .then(() => remove(ref(db, 'orders/' + key)))
+  .then(() => toast(`Đã hoàn thành: ${t.item}`))
+  .catch(err => {
+    console.error('Lỗi khi hoàn thành đơn:', err);
+    if (card) card.classList.remove('done');
+    if (btn){ btn.disabled = false; btn.textContent = '✓ Hoàn thành'; }
+    toast('Lỗi Firebase — kiểm tra quyền ghi (.write)', true);
+  });
+}
+
+render();
+</script>
+</body>
+</html>

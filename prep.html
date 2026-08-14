@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Prep Station</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #0d1f0d, #1a2e1a, #0f2010);
+      height: 100vh; width: 100vw;
+      display: flex; overflow: hidden; color: #fff;
+    }
+
+    /* ══ LEFT PANEL ══ */
+    #left {
+      width: 280px; min-width: 280px;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 20px 16px; gap: 12px;
+      border-right: 1px solid rgba(120,200,80,0.2);
+    }
+
+    #left h1 {
+      font-size: 0.9rem; letter-spacing: 3px;
+      color: #7ec850; text-transform: uppercase; text-align: center;
+    }
+
+    #display {
+      width: 100%;
+      background: rgba(255,255,255,0.07);
+      border: 2px solid #7ec850;
+      border-radius: 12px;
+      padding: 10px 16px;
+      font-size: 2.2rem; text-align: right;
+      letter-spacing: 8px; color: #fff;
+      min-height: 58px;
+    }
+
+    #status { font-size: 0.72rem; color: #aaa; text-align: center; height: 16px; }
+
+    /* ── Search box ── */
+    #search-wrap { position: relative; width: 100%; }
+    #search-input {
+      width: 100%; padding: 9px 14px;
+      background: rgba(255,255,255,0.07);
+      border: 1.5px solid rgba(126,200,80,0.4);
+      border-radius: 10px; color: #fff;
+      font-size: 0.9rem; outline: none;
+    }
+    #search-input::placeholder { color: #666; }
+    #search-input:focus { border-color: #7ec850; }
+    #search-dropdown {
+      display: none; position: absolute;
+      top: calc(100% + 4px); left: 0; right: 0;
+      background: #1a2e1a; border: 1px solid #7ec850;
+      border-radius: 10px; z-index: 200;
+      max-height: 220px; overflow-y: auto;
+    }
+    #search-dropdown.open { display: block; }
+    .dd-item {
+      padding: 10px 14px; cursor: pointer;
+      font-size: 0.88rem; border-bottom: 1px solid rgba(255,255,255,0.06);
+      display: flex; gap: 10px; align-items: center;
+    }
+    .dd-item:last-child { border-bottom: none; }
+    .dd-item:hover { background: rgba(126,200,80,0.15); }
+    .dd-item .dd-code { color: #7ec850; font-weight: 700; min-width: 32px; }
+    .dd-item .dd-name { color: #eee; }
+    .dd-item .dd-match { color: #7ec850; font-weight: 700; }
+
+    .numpad {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 8px; width: 100%;
+    }
+
+    .btn {
+      height: 62px; border-radius: 10px; border: none;
+      font-size: 1.5rem; font-weight: bold;
+      cursor: pointer; user-select: none;
+      transition: transform 0.1s, background 0.15s;
+    }
+    .btn:active { transform: scale(0.92); }
+    .btn-num {
+      background: rgba(255,255,255,0.09);
+      color: #fff; border: 1px solid rgba(255,255,255,0.15);
+    }
+    .btn-num:hover { background: rgba(255,255,255,0.18); }
+    .btn-del { background: rgba(220,80,80,0.65); color: #fff; }
+    .btn-search {
+      grid-column: span 3; height: 54px;
+      background: linear-gradient(135deg, #7ec850, #4e9a2a);
+      color: #fff; font-size: 1rem; letter-spacing: 1px;
+      border-radius: 10px;
+    }
+
+    /* ══ MIDDLE PANEL: Item List ══ */
+    #middle {
+      width: 220px; min-width: 220px;
+      display: flex; flex-direction: column;
+      border-right: 1px solid rgba(126,200,80,0.2);
+      overflow: hidden;
+    }
+    #middle-header {
+      padding: 16px 14px 10px;
+      font-size: 0.68rem; text-transform: uppercase;
+      letter-spacing: 2px; color: #7ec850;
+      border-bottom: 1px solid rgba(126,200,80,0.15);
+      flex-shrink: 0;
+    }
+    #item-list { flex: 1; overflow-y: auto; padding: 8px; }
+    #item-list::-webkit-scrollbar { width: 3px; }
+    #item-list::-webkit-scrollbar-thumb { background: rgba(126,200,80,0.3); border-radius: 3px; }
+    .list-group-label {
+      font-size: 0.65rem; text-transform: uppercase;
+      letter-spacing: 2px; color: #7ec850;
+      padding: 10px 6px 4px; opacity: 0.6;
+    }
+    .list-card {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px; margin-bottom: 4px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 10px; cursor: pointer;
+      border: 1px solid transparent;
+      transition: background 0.15s, border 0.15s;
+    }
+    .list-card:hover  { background: rgba(126,200,80,0.12); border-color: rgba(126,200,80,0.3); }
+    .list-card.active { background: rgba(126,200,80,0.2);  border-color: #7ec850; }
+    .list-card-code {
+      min-width: 30px; height: 30px;
+      background: rgba(126,200,80,0.15); border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.75rem; font-weight: 700; color: #7ec850; flex-shrink: 0;
+    }
+    .list-card-name { font-size: 0.85rem; color: #ddd; line-height: 1.3; }
+
+    /* ══ RIGHT PANEL ══ */
+    #right {
+      flex: 1; display: flex; flex-direction: column;
+      overflow: hidden; padding: 20px 24px;
+    }
+
+    #recipe-empty {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 10px; opacity: 0.3;
+    }
+    #recipe-empty .icon { font-size: 4rem; }
+    #recipe-empty p { font-size: 0.95rem; letter-spacing: 2px; text-transform: uppercase; }
+
+    #recipe-card { display: none; flex: 1; flex-direction: column; overflow: hidden; animation: fadeIn 0.3s ease; }
+    #recipe-card.show { display: flex; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateX(16px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    /* HSD Banner */
+    #hsd-banner {
+      background: rgba(220,60,60,0.85);
+      border-radius: 10px; padding: 8px 16px;
+      font-size: 0.85rem; font-weight: 600;
+      color: #fff; margin-bottom: 12px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    #hsd-banner span { font-size: 1.1rem; }
+
+    /* Header */
+    #recipe-header {
+      display: flex; align-items: flex-start;
+      justify-content: space-between; margin-bottom: 12px; gap: 12px;
+    }
+    #recipe-stt { font-size: 0.75rem; color: #7ec850; letter-spacing: 3px; margin-bottom: 3px; }
+    #recipe-name { font-size: 1.8rem; font-weight: 700; color: #fff; line-height: 1.2; }
+    #recipe-group {
+      display: inline-block; margin-top: 6px;
+      padding: 3px 12px;
+      background: rgba(126,200,80,0.15);
+      border: 1px solid rgba(126,200,80,0.4);
+      border-radius: 20px; font-size: 0.8rem; color: #7ec850;
+    }
+    #btn-close {
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.18);
+      color: #aaa; font-size: 1.3rem;
+      width: 38px; height: 38px;
+      border-radius: 50%; cursor: pointer; flex-shrink: 0;
+    }
+    #btn-close:hover { background: rgba(220,80,80,0.5); color: #fff; }
+
+    /* Batch Scaler */
+    #batch-bar {
+      display: flex; align-items: center; gap: 12px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 10px; padding: 10px 16px;
+      margin-bottom: 12px;
+      border: 1px solid rgba(126,200,80,0.25);
+    }
+    #batch-bar label { font-size: 0.8rem; color: #7ec850; letter-spacing: 1px; white-space: nowrap; }
+    #batch-slider { flex: 1; accent-color: #7ec850; height: 6px; cursor: pointer; }
+    #batch-display {
+      font-size: 1.3rem; font-weight: 700; color: #7ec850;
+      min-width: 48px; text-align: center;
+    }
+    .batch-btn {
+      width: 36px; height: 36px; border-radius: 8px; border: none;
+      background: rgba(126,200,80,0.2); color: #7ec850;
+      font-size: 1.3rem; font-weight: bold; cursor: pointer;
+      border: 1px solid rgba(126,200,80,0.3);
+    }
+    .batch-btn:hover { background: rgba(126,200,80,0.35); }
+
+    /* Body: định lượng + bước */
+    #recipe-body {
+      flex: 1; display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px; overflow: hidden;
+    }
+
+    .panel {
+      background: rgba(255,255,255,0.04);
+      border-radius: 14px; padding: 14px 16px;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .panel-title {
+      font-size: 0.68rem; text-transform: uppercase;
+      letter-spacing: 3px; color: #7ec850;
+      margin-bottom: 10px;
+      border-bottom: 1px solid rgba(126,200,80,0.2);
+      padding-bottom: 6px; flex-shrink: 0;
+    }
+
+    .panel-scroll { overflow-y: auto; flex: 1; }
+    .panel-scroll::-webkit-scrollbar { width: 3px; }
+    .panel-scroll::-webkit-scrollbar-thumb { background: rgba(126,200,80,0.3); border-radius: 3px; }
+
+    /* Định lượng items */
+    .ing-item {
+      display: flex; justify-content: space-between;
+      align-items: center;
+      padding: 8px 10px; margin-bottom: 6px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+      border-left: 3px solid #7ec850;
+    }
+    .ing-name { font-size: 0.9rem; color: #ccc; }
+    .ing-amount { font-size: 1rem; font-weight: 700; color: #7ec850; }
+
+    /* Bước thực hiện */
+    .step-item {
+      display: flex; gap: 10px; align-items: flex-start;
+      padding: 9px 10px; margin-bottom: 6px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+    }
+    .step-num {
+      min-width: 24px; height: 24px;
+      background: #7ec850; color: #0d1f0d;
+      border-radius: 50%; font-size: 0.8rem;
+      font-weight: 700; display: flex;
+      align-items: center; justify-content: center;
+      flex-shrink: 0; margin-top: 1px;
+    }
+    .step-text { font-size: 0.9rem; color: #ddd; line-height: 1.55; }
+
+    /* Timer */
+    #timer-section {
+      margin-top: 12px; flex-shrink: 0;
+      background: rgba(255,255,255,0.04);
+      border-radius: 12px; padding: 12px 16px;
+      border: 1px solid rgba(255,255,255,0.08);
+      display: flex; align-items: center; gap: 14px;
+    }
+    #timer-display {
+      font-size: 2rem; font-weight: 700;
+      color: #7ec850; min-width: 90px; text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+    #timer-display.warning { color: #f0a500; animation: pulse 0.5s infinite alternate; }
+    #timer-display.done    { color: #f05050; animation: pulse 0.3s infinite alternate; }
+    @keyframes pulse { from { opacity: 1; } to { opacity: 0.4; } }
+
+    .timer-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .timer-preset {
+      padding: 6px 12px; border-radius: 8px; border: none;
+      background: rgba(126,200,80,0.15);
+      border: 1px solid rgba(126,200,80,0.3);
+      color: #7ec850; font-size: 0.8rem; cursor: pointer;
+    }
+    .timer-preset:hover { background: rgba(126,200,80,0.3); }
+    .timer-preset.active { background: #7ec850; color: #0d1f0d; font-weight: 700; }
+
+    #btn-timer-start {
+      padding: 8px 20px; border-radius: 8px; border: none;
+      background: linear-gradient(135deg, #7ec850, #4e9a2a);
+      color: #fff; font-size: 0.9rem; font-weight: 600;
+      cursor: pointer;
+    }
+    #btn-timer-reset {
+      padding: 8px 14px; border-radius: 8px; border: none;
+      background: rgba(220,80,80,0.5); color: #fff;
+      font-size: 0.9rem; cursor: pointer;
+    }
+
+    #timer-label { font-size: 0.75rem; color: #aaa; }
+
+    /* Nhãn dán */
+    #label-section {
+      margin-top: 10px; flex-shrink: 0;
+      background: rgba(255,200,0,0.07);
+      border: 1px solid rgba(255,200,0,0.25);
+      border-radius: 10px; padding: 10px 16px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    #label-section span { font-size: 1.2rem; }
+    #label-text { font-size: 0.82rem; color: #ffd966; line-height: 1.5; }
+
+    .not-found {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 10px; color: #f88;
+    }
+    .not-found .icon { font-size: 3rem; }
+  </style>
+</head>
+<body>
+
+<!-- LEFT: Numpad -->
+<div id="left">
+  <h1>🥄 Công thức</h1>
+
+  <!-- Keyword search -->
+  <div id="search-wrap">
+    <input id="search-input" type="text" placeholder="🔍 Tìm theo tên món..." oninput="onSearchInput(this.value)" autocomplete="off" />
+    <div id="search-dropdown"></div>
+  </div>
+
+  <div id="display">_</div>
+  <div id="status">Đang tải dữ liệu...</div>
+  <div class="numpad">
+    <button class="btn btn-num" onclick="press('7')">7</button>
+    <button class="btn btn-num" onclick="press('8')">8</button>
+    <button class="btn btn-num" onclick="press('9')">9</button>
+    <button class="btn btn-num" onclick="press('4')">4</button>
+    <button class="btn btn-num" onclick="press('5')">5</button>
+    <button class="btn btn-num" onclick="press('6')">6</button>
+    <button class="btn btn-num" onclick="press('1')">1</button>
+    <button class="btn btn-num" onclick="press('2')">2</button>
+    <button class="btn btn-num" onclick="press('3')">3</button>
+    <button class="btn btn-del" onclick="del()">⌫</button>
+    <button class="btn btn-num" onclick="press('0')">0</button>
+    <button class="btn btn-search" onclick="search()">🔍 Tìm kiếm</button>
+  </div>
+</div>
+
+<!-- MIDDLE: Item list -->
+<div id="middle">
+  <div id="middle-header">📋 Tất cả món tiền chế</div>
+  <div id="item-list"><p style="color:#555;font-size:0.8rem;padding:12px">Đang tải...</p></div>
+</div>
+
+<!-- RIGHT: Recipe -->
+<div id="right">
+
+  <div id="recipe-empty">
+    <img src="https://lh3.googleusercontent.com/d/1dYuvwLxVmgh-DlAWpByVsYTc3JYMcK3T"
+      alt="Logo"
+      style="max-width:280px;max-height:280px;object-fit:contain;opacity:0.85;"
+      onerror="this.style.display='none';document.getElementById('recipe-empty-fallback').style.display='flex'">
+    <div id="recipe-empty-fallback" style="display:none;flex-direction:column;align-items:center;gap:10px">
+      <div class="icon">🥄</div>
+      <p>Nhập mã để xem công thức tiền chế</p>
+    </div>
+  </div>
+
+  <div id="recipe-card">
+
+    <!-- HSD Banner -->
+    <div id="hsd-banner">
+      <span>⚠️</span>
+      <span id="hsd-text"></span>
+    </div>
+
+    <!-- Header -->
+    <div id="recipe-header">
+      <div id="recipe-meta">
+        <div id="recipe-stt"></div>
+        <div id="recipe-name"></div>
+        <span id="recipe-group"></span>
+      </div>
+      <button id="btn-close" onclick="closeRecipe()">✕</button>
+    </div>
+
+    <!-- Batch Scaler -->
+    <div id="batch-bar">
+      <label>🔢 SỐ MẺ</label>
+      <button class="batch-btn" onclick="changeBatch(-0.5)">−</button>
+      <input type="range" id="batch-slider" min="0.5" max="5" step="0.5" value="1" oninput="updateBatch(this.value)">
+      <button class="batch-btn" onclick="changeBatch(0.5)">+</button>
+      <div id="batch-display">x1</div>
+    </div>
+
+    <!-- Body -->
+    <div id="recipe-body">
+      <!-- Định lượng -->
+      <div class="panel">
+        <div class="panel-title">⚖️ Định lượng mẻ</div>
+        <div class="panel-scroll" id="ing-list"></div>
+      </div>
+      <!-- Các bước -->
+      <div class="panel">
+        <div class="panel-title">📋 Các bước thực hiện</div>
+        <div class="panel-scroll" id="steps-list"></div>
+      </div>
+    </div>
+
+    <!-- Timer -->
+    <div id="timer-section">
+      <div>
+        <div id="timer-label">⏱ Hẹn giờ</div>
+        <div id="timer-display">00:00</div>
+      </div>
+      <div class="timer-controls">
+        <button class="timer-preset" onclick="setTimer(5)">5 phút</button>
+        <button class="timer-preset" onclick="setTimer(8)">8 phút</button>
+        <button class="timer-preset" onclick="setTimer(10)">10 phút</button>
+        <button class="timer-preset" onclick="setTimer(15)">15 phút</button>
+        <button class="timer-preset" onclick="setTimer(20)">20 phút</button>
+        <button id="btn-timer-start" onclick="toggleTimer()">▶ Bắt đầu</button>
+        <button id="btn-timer-reset" onclick="resetTimer()">↺ Đặt lại</button>
+      </div>
+    </div>
+
+    <!-- Nhãn dán -->
+    <div id="label-section">
+      <span>🏷️</span>
+      <div id="label-text"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  const API_URL = 'https://script.google.com/macros/s/AKfycbzLLmvxGlSl3ZKLgjuYihI9faci-7JlWHkC-SnOlPJf4xqEwYJ8Ns_MGhUbgydMt0en/exec';
+  let data = [];
+  let input = '';
+  let currentItem = null;
+  let batchMultiplier = 1;
+
+  // Timer state
+  let timerTotal = 0;
+  let timerLeft = 0;
+  let timerInterval = null;
+  let timerRunning = false;
+
+  fetch(API_URL)
+    .then(r => r.json())
+    .then(json => {
+      data = Array.isArray(json) ? json : [];
+      document.getElementById('status').textContent = `✅ ${data.length} công thức`;
+      renderItemList();
+    })
+    .catch(() => {
+      document.getElementById('status').textContent = '⚠️ Không tải được dữ liệu';
+    });
+
+  function renderItemList() {
+    const list = document.getElementById('item-list');
+    if (!data.length) { list.innerHTML = '<p style="color:#555;font-size:0.8rem;padding:12px">Không có món nào.</p>'; return; }
+    const groups = {};
+    data.forEach(d => {
+      const g = d['Nhóm'] || 'Khác';
+      if (!groups[g]) groups[g] = [];
+      groups[g].push(d);
+    });
+    list.innerHTML = Object.entries(groups).map(([group, items]) =>
+      `<div class="list-group-label">${group}</div>` +
+      items.map(d => `
+        <div class="list-card" id="lc-${d['Mã Số']}" onclick="selectListItem(${d['Mã Số']})">
+          <div class="list-card-code">${d['Mã Số']}</div>
+          <div class="list-card-name">${d['Tên món'] || ''}</div>
+        </div>`).join('')
+    ).join('');
+  }
+
+  function selectListItem(maS) {
+    const item = data.find(d => parseInt(d['Mã Số'], 10) === parseInt(maS, 10));
+    if (!item) return;
+    document.querySelectorAll('.list-card').forEach(c => c.classList.remove('active'));
+    const card = document.getElementById(`lc-${maS}`);
+    if (card) { card.classList.add('active'); card.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+    showRecipe(item['Mã Số'], item);
+  }
+
+  // ── Keyword search ──
+  function onSearchInput(val) {
+    const dd = document.getElementById('search-dropdown');
+    const q = val.trim().toLowerCase();
+    if (q.length < 2) { dd.classList.remove('open'); return; }
+
+    const results = data.filter(d => {
+      const name = (d['Tên món'] || '').toLowerCase();
+      // match nếu tên chứa từ khoá hoặc ít nhất 2 ký tự liên tiếp trùng
+      return name.includes(q);
+    }).slice(0, 8);
+
+    if (!results.length) { dd.classList.remove('open'); return; }
+
+    dd.innerHTML = results.map(d => {
+      const name = d['Tên món'] || '';
+      const highlighted = name.replace(new RegExp(`(${q})`, 'gi'), '<span class="dd-match">$1</span>');
+      return `<div class="dd-item" onclick="selectFromSearch(${d['Mã Số']}); document.getElementById('search-input').value=''; document.getElementById('search-dropdown').classList.remove('open');">
+        <span class="dd-code">#${d['Mã Số']}</span>
+        <span class="dd-name">${highlighted}</span>
+      </div>`;
+    }).join('');
+    dd.classList.add('open');
+  }
+
+  function selectFromSearch(maS) { selectListItem(maS); }
+
+  // Đóng dropdown khi click ngoài
+  document.addEventListener('click', e => {
+    if (!document.getElementById('search-wrap').contains(e.target))
+      document.getElementById('search-dropdown').classList.remove('open');
+  });
+
+  // ── Numpad ──
+  function press(digit) {
+    if (input.length >= 4) return;
+    input += digit;
+    document.getElementById('display').textContent = input;
+  }
+
+  function del() {
+    input = input.slice(0, -1);
+    document.getElementById('display').textContent = input || '_';
+  }
+
+  function search() {
+    if (!input) return;
+    const num = parseInt(input, 10);
+    const item = data.find(d => parseInt(d['Mã Số'], 10) === num);
+    showRecipe(num, item);
+    input = '';
+    document.getElementById('display').textContent = '_';
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key >= '0' && e.key <= '9') press(e.key);
+    else if (e.key === 'Backspace') del();
+    else if (e.key === 'Enter') search();
+    else if (e.key === 'Escape') closeRecipe();
+  });
+
+  // ── Show Recipe ──
+  function showRecipe(num, item) {
+    document.getElementById('recipe-empty').style.display = 'none';
+    document.getElementById('recipe-card').style.display = 'flex';
+    document.getElementById('recipe-card').style.flexDirection = 'column';
+
+    if (!item) {
+      document.getElementById('recipe-card').innerHTML =
+        `<div class="not-found"><div class="icon">🔍</div><p>Không tìm thấy mã <strong>${num}</strong></p></div>`;
+      return;
+    }
+
+    currentItem = item;
+    batchMultiplier = 1;
+    document.getElementById('batch-slider').value = 1;
+    document.getElementById('batch-display').textContent = 'x1';
+
+    document.getElementById('recipe-stt').textContent  = `# ${item['Mã Số']}`;
+    document.getElementById('recipe-name').textContent = item['Tên món'] || '';
+    document.getElementById('recipe-group').textContent = item['Nhóm'] || 'Tiền chế';
+
+    // HSD
+    const hsd = item['Thời gian sử dụng'] || '';
+    document.getElementById('hsd-text').textContent =
+      `⚠️ Bắt buộc dán tem HSD sau khi làm xong — Hạn sử dụng: ${hsd || 'Xem quy định'}. Cất ngăn mát 0–4°C.`;
+
+    // Nhãn dán
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const dateStr = `${pad(now.getDate())}/${pad(now.getMonth()+1)}/${now.getFullYear()}`;
+    const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    const hsdTime = hsd ? `HSD: ${hsd} kể từ ${timeStr}` : '';
+    document.getElementById('label-text').innerHTML =
+      `<strong>Nhãn dán hũ:</strong> ${item['Ghi nhãn'] || item['Tên món']} &nbsp;|&nbsp; Ngày làm: ${dateStr} &nbsp;|&nbsp; Giờ làm: ${timeStr} &nbsp;|&nbsp; ${hsdTime} &nbsp;|&nbsp; Người làm: ___________`;
+
+    renderIngredients();
+    renderSteps();
+    resetTimer();
+  }
+
+  // ── Ingredients ──
+  function renderIngredients() {
+    if (!currentItem) return;
+    const raw = String(currentItem['Định lượng chuẩn'] || '').trim();
+    const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+    const list = document.getElementById('ing-list');
+
+    if (!lines.length) {
+      list.innerHTML = '<p style="color:#aaa;font-size:0.85rem">Không có định lượng.</p>';
+      return;
+    }
+
+    list.innerHTML = lines.map(line => {
+      // Parse "Tên: số đơn vị" để nhân mẻ
+      const scaled = scaleLine(line, batchMultiplier);
+      const parts = scaled.split(':');
+      const name   = parts[0].replace(/^[-•]\s*/, '').trim();
+      const amount = parts.slice(1).join(':').trim();
+      return `<div class="ing-item">
+        <span class="ing-name">${name}</span>
+        <span class="ing-amount">${amount || scaled}</span>
+      </div>`;
+    }).join('');
+  }
+
+  function scaleLine(line, multiplier) {
+    if (multiplier === 1) return line;
+    // Nhân tất cả số trong dòng với multiplier
+    return line.replace(/(\d+(\.\d+)?)/g, (match, num) => {
+      const result = parseFloat(num) * multiplier;
+      return Number.isInteger(result) ? result : result.toFixed(1);
+    });
+  }
+
+  // ── Steps ──
+  function renderSteps() {
+    if (!currentItem) return;
+    const raw = String(currentItem['Các bước thực hiện'] || '').trim();
+    const lines = raw.split('\n').map(l => l.trim()).filter(Boolean).slice(0, 8);
+    const list = document.getElementById('steps-list');
+
+    if (!lines.length) {
+      list.innerHTML = '<p style="color:#aaa;font-size:0.85rem">Không có bước thực hiện.</p>';
+      return;
+    }
+
+    list.innerHTML = lines.map((line, i) => {
+      const text = line.replace(/^\d+\.\s*/, '');
+      return `<div class="step-item">
+        <div class="step-num">${i + 1}</div>
+        <div class="step-text">${text}</div>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Batch Scaler ──
+  function updateBatch(val) {
+    batchMultiplier = parseFloat(val);
+    document.getElementById('batch-display').textContent = `x${batchMultiplier % 1 === 0 ? batchMultiplier : batchMultiplier.toFixed(1)}`;
+    renderIngredients();
+  }
+
+  function changeBatch(delta) {
+    const slider = document.getElementById('batch-slider');
+    const newVal = Math.min(5, Math.max(0.5, parseFloat(slider.value) + delta));
+    slider.value = newVal;
+    updateBatch(newVal);
+  }
+
+  // ── Timer ──
+  function setTimer(minutes) {
+    resetTimer();
+    timerTotal = minutes * 60;
+    timerLeft  = timerTotal;
+    updateTimerDisplay();
+    document.querySelectorAll('.timer-preset').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+  }
+
+  function toggleTimer() {
+    if (!timerTotal) return;
+    if (timerRunning) {
+      clearInterval(timerInterval);
+      timerRunning = false;
+      document.getElementById('btn-timer-start').textContent = '▶ Tiếp tục';
+    } else {
+      timerRunning = true;
+      document.getElementById('btn-timer-start').textContent = '⏸ Tạm dừng';
+      timerInterval = setInterval(() => {
+        timerLeft--;
+        updateTimerDisplay();
+        if (timerLeft <= 0) {
+          clearInterval(timerInterval);
+          timerRunning = false;
+          document.getElementById('btn-timer-start').textContent = '▶ Bắt đầu';
+          document.getElementById('timer-display').classList.add('done');
+          // Flash screen
+          flashAlert();
+        } else if (timerLeft <= 60) {
+          document.getElementById('timer-display').classList.add('warning');
+          document.getElementById('timer-display').classList.remove('done');
+        }
+      }, 1000);
+    }
+  }
+
+  function resetTimer() {
+    clearInterval(timerInterval);
+    timerRunning = false; timerLeft = timerTotal;
+    updateTimerDisplay();
+    document.getElementById('btn-timer-start').textContent = '▶ Bắt đầu';
+    document.getElementById('timer-display').classList.remove('warning', 'done');
+    document.querySelectorAll('.timer-preset').forEach(b => b.classList.remove('active'));
+    timerTotal = 0; timerLeft = 0;
+    document.getElementById('timer-display').textContent = '00:00';
+  }
+
+  function updateTimerDisplay() {
+    const m = Math.floor(timerLeft / 60);
+    const s = timerLeft % 60;
+    document.getElementById('timer-display').textContent =
+      `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  }
+
+  function flashAlert() {
+    let count = 0;
+    const body = document.body;
+    const orig = body.style.background;
+    const flash = setInterval(() => {
+      body.style.background = count % 2 === 0 ? '#5a0000' : orig;
+      if (++count >= 8) { clearInterval(flash); body.style.background = orig; }
+    }, 300);
+    // Beep via AudioContext
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      [0, 0.4, 0.8].forEach(t => {
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.connect(g); g.connect(ctx.destination);
+        o.frequency.value = 880;
+        g.gain.setValueAtTime(0.5, ctx.currentTime + t);
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.3);
+        o.start(ctx.currentTime + t);
+        o.stop(ctx.currentTime + t + 0.3);
+      });
+    } catch(e) {}
+  }
+
+  function closeRecipe() {
+    resetTimer();
+    currentItem = null;
+    document.getElementById('recipe-card').style.display = 'none';
+    document.getElementById('recipe-empty').style.display = 'flex';
+    document.querySelectorAll('.list-card').forEach(c => c.classList.remove('active'));
+  }
+</script>
+</body>
+</html>

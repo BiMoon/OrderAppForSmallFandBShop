@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Đăng nhập — Quản Lý Pha Chế</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{
+      font-family:'Segoe UI',sans-serif;
+      min-height:100vh;display:flex;align-items:center;justify-content:center;
+      background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);
+      color:#fff;padding:24px;
+    }
+    .card{
+      background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);
+      border-radius:20px;padding:40px 32px;width:100%;max-width:360px;
+      text-align:center;backdrop-filter:blur(12px);
+    }
+    .logo{font-size:52px;margin-bottom:16px}
+    h1{font-size:1.4rem;font-weight:700;letter-spacing:.5px;margin-bottom:6px}
+    .sub{font-size:.875rem;color:rgba(255,255,255,.5);margin-bottom:32px}
+    #btnLogin{
+      display:flex;align-items:center;justify-content:center;gap:10px;
+      width:100%;padding:14px 20px;border-radius:12px;border:none;cursor:pointer;
+      background:#fff;color:#1a1a2e;font-size:1rem;font-weight:600;
+      transition:opacity .15s,transform .1s;
+    }
+    #btnLogin:hover{opacity:.92}
+    #btnLogin:active{transform:scale(.97)}
+    #btnLogin:disabled{opacity:.5;cursor:not-allowed}
+    #btnLogin img{width:20px;height:20px;flex-shrink:0}
+    #msg{margin-top:18px;font-size:.82rem;min-height:20px;color:rgba(255,255,255,.55)}
+    #msg.err{color:#f87171}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">☕</div>
+    <h1>Quản Lý Pha Chế</h1>
+    <p class="sub">Đăng nhập để tiếp tục</p>
+    <button id="btnLogin">
+      <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="">
+      Đăng nhập bằng Google
+    </button>
+    <div id="msg"></div>
+  </div>
+
+  <script type="module">
+    import { initializeApp }           from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
+    import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged }
+      from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
+
+    const app  = initializeApp({
+      apiKey:            'AIzaSyAWgDT99kbQlTzOG76xVImqtu3tRGPfstI',
+      authDomain:        'quanlyphachequan.firebaseapp.com',
+      databaseURL:       'https://quanlyphachequan-default-rtdb.asia-southeast1.firebasedatabase.app',
+      projectId:         'quanlyphachequan',
+      storageBucket:     'quanlyphachequan.firebasestorage.app',
+      messagingSenderId: '522540933651',
+      appId:             '1:522540933651:web:acbe8224f1db47b2d895e6'
+    });
+    const auth = getAuth(app);
+    const btn  = document.getElementById('btnLogin');
+    const msg  = document.getElementById('msg');
+
+    // Already logged in → go straight to app
+    onAuthStateChanged(auth, user => {
+      if (user) location.replace('./app/index.html');
+    });
+
+    btn.onclick = async () => {
+      btn.disabled = true;
+      msg.className = '';
+      msg.textContent = 'Đang mở cửa sổ đăng nhập…';
+      try {
+        await signInWithPopup(auth, new GoogleAuthProvider());
+        // onAuthStateChanged above will fire and redirect
+      } catch (e) {
+        btn.disabled = false;
+        msg.className = 'err';
+        msg.textContent = e.code === 'auth/popup-closed-by-user'
+          ? 'Bạn đã đóng cửa sổ đăng nhập.'
+          : 'Đăng nhập thất bại: ' + e.message;
+      }
+    };
+  </script>
+</body>
+</html>

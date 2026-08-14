@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Quản Lý Pha Chế</title>
+
+<meta name="theme-color" content="#0f766e">
+<meta name="description" content="Đặt món, quầy pha chế, sơ chế và thống kê doanh thu cho quán cà phê.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Pha Chế">
+<meta name="mobile-web-app-capable" content="yes">
+
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<!-- ══════════ CHỌN VAI TRÒ (lần đầu mở app) ══════════ -->
+<div id="roleGate">
+  <div class="gate-logo">☕</div>
+  <div class="gate-h">Bạn làm ở vị trí nào?</div>
+  <div class="gate-p">Chọn một lần thôi — app sẽ mở đúng màn hình đó những lần sau.
+    Bạn vẫn đổi được ở thanh dưới hoặc trong Cài đặt.</div>
+
+  <div class="roles">
+    <button class="role" data-role="cashier">
+      <span class="em">🧾</span>
+      <span style="flex:1;min-width:0">
+        <span class="tt">Thu ngân</span>
+        <span class="dd">Nhận order theo bàn, gửi xuống quầy, xin hủy món</span>
+      </span><span class="ar">›</span>
+    </button>
+    <button class="role" data-role="barista">
+      <span class="em">☕</span>
+      <span style="flex:1;min-width:0">
+        <span class="tt">Quầy pha chế</span>
+        <span class="dd">Xem món đang chờ, bấm hoàn thành, duyệt yêu cầu hủy</span>
+      </span><span class="ar">›</span>
+    </button>
+    <button class="role" data-role="prep">
+      <span class="em">🥄</span>
+      <span style="flex:1;min-width:0">
+        <span class="tt">Sơ chế</span>
+        <span class="dd">Công thức tiền chế, nhân mẻ, hẹn giờ, in nhãn</span>
+      </span><span class="ar">›</span>
+    </button>
+    <button class="role" data-role="manager">
+      <span class="em">📊</span>
+      <span style="flex:1;min-width:0">
+        <span class="tt">Quản lý</span>
+        <span class="dd">Doanh thu theo ngày / tháng / năm, món bán chạy</span>
+      </span><span class="ar">›</span>
+    </button>
+  </div>
+
+  <div class="installbar" id="installGate">
+    <span style="font-size:22px">📲</span>
+    <span class="tx"><b>Cài lên máy như một app</b>Mở nhanh, chạy toàn màn hình, dùng được cả khi mạng yếu.</span>
+    <button class="btn sm solid" data-install>Cài đặt</button>
+  </div>
+</div>
+
+<!-- ══════════ THANH TRÊN ══════════ -->
+<header class="appbar">
+  <div class="appbar-in">
+    <button class="iconbtn" id="btnBack" hidden aria-label="Quay lại">‹</button>
+    <div style="flex:1;min-width:0">
+      <h1 id="scTitle">Quản Lý Pha Chế</h1>
+      <div class="sub" id="scSub"></div>
+    </div>
+    <div class="conn" id="conn"><span class="dot"></span><span id="connTxt">…</span></div>
+    <img id="userAvatar" hidden width="28" height="28" alt="" style="border-radius:50%;object-fit:cover">
+    <span id="userName" style="font-size:12px;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+    <button class="iconbtn" id="btnLogout" hidden aria-label="Đăng xuất" title="Đăng xuất">🚪</button>
+    <button class="iconbtn" id="btnSound" hidden aria-label="Bật/tắt âm báo">🔕</button>
+    <button class="iconbtn" id="btnMore" aria-label="Cài đặt">⋯</button>
+  </div>
+  <div class="offbar" id="offbar"><span>⚠️</span><span>Đang mất mạng — thao tác sẽ được gửi lại khi có kết nối.</span></div>
+</header>
+
+<div class="updbar" id="updbar">
+  <span style="flex:1">Đã có bản cập nhật mới.</span>
+  <button class="btn" id="btnReload">Tải lại</button>
+</div>
+
+<!-- ══════════ NỘI DUNG ══════════ -->
+<main id="main">
+  <section class="screen" id="sc-pos"></section>
+  <section class="screen" id="sc-kds"></section>
+  <section class="screen" id="sc-prep"></section>
+  <section class="screen" id="sc-report"></section>
+</main>
+
+<!-- ══════════ THANH DƯỚI ══════════ -->
+<nav class="tabbar" id="tabbar">
+  <button data-go="pos"><span class="ic">🧾</span><span>Đặt món</span><span class="pip hide" id="pipPos"></span></button>
+  <button data-go="kds"><span class="ic">☕</span><span>Pha chế</span><span class="pip hide" id="pipKds"></span></button>
+  <button data-go="prep"><span class="ic">🥄</span><span>Sơ chế</span></button>
+  <button data-go="report"><span class="ic">📊</span><span>Thống kê</span></button>
+</nav>
+
+<!-- ══════════ SHEET DÙNG CHUNG ══════════ -->
+<div class="sheet-wrap" id="sheet">
+  <div class="sheet">
+    <div class="sheet-grip"></div>
+    <div class="sheet-head"><h2 id="shTitle"></h2><p id="shDesc" class="hide"></p></div>
+    <div class="sheet-body" id="shBody"></div>
+    <div class="sheet-foot" id="shFoot"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
