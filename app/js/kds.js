@@ -6,8 +6,9 @@
 import {
   el, esc, money, fmtElapsed, ageClass,
   data, onData, completeOrder, approveCancel, rejectCancel,
-  toast, sheet, store, audio, keepAwake
+  toast, sheet, closeSheet, store, audio, keepAwake
 } from './core.js';
+import { openRecipeSheet } from './prep.js';
 
 let group   = store.get('kds.group', 'table');   // table | time
 let filter  = 'all';
@@ -54,8 +55,20 @@ const CSS = `
 .tk .mid{display:flex;align-items:center;gap:13px}
 .tk .q{flex:none;width:52px;height:52px;border-radius:13px;background:var(--ink);color:#fff;
        display:grid;place-items:center;font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
-.tk .nm{font-size:18px;font-weight:650;line-height:1.28;word-break:break-word;flex:1;min-width:0}
-.tk .pv{font-size:12px;color:var(--ink-3);margin-top:3px}
+.tk .info{flex:1;min-width:0}
+.tk .nm{font-size:18px;font-weight:650;line-height:1.28;word-break:break-word}
+.tk .stt{display:inline-flex;align-items:center;gap:5px;margin-top:4px;
+         font-size:11.5px;font-weight:700;color:var(--ink-3);letter-spacing:.02em}
+.tk .stt b{color:var(--brand)}
+.tk .pv{font-size:12px;color:var(--ink-3);margin-top:2px}
+.tk .recipe-btn{
+  flex:none;width:38px;height:38px;border-radius:11px;
+  border:1.5px solid var(--brand);background:var(--brand-soft);
+  color:var(--brand);font-size:17px;
+  display:grid;place-items:center;
+  transition:background .15s;
+}
+.tk .recipe-btn:active{background:var(--brand);color:#fff}
 .tk .done{width:100%;min-height:52px;border-radius:13px;background:var(--ink);color:#fff;
           font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px}
 .tk .done:active{background:var(--ok)}
@@ -104,6 +117,8 @@ export function mountKds(root){
     filter = b.dataset.t === 'all' ? 'all' : b.dataset.t; render();
   };
   el('kdsBoard').onclick = e => {
+    const rc = e.target.closest('[data-recipe]');
+    if (rc) return openRecipeSheet(rc.dataset.recipe);
     const d = e.target.closest('[data-done]');
     if (d) return finish(d.dataset.done, d);
     const a = e.target.closest('[data-ap]');
@@ -114,7 +129,7 @@ export function mountKds(root){
     if (g) return finishGroup(g.dataset.grp);
   };
 
-  onData(w => { if (w === 'orders'){ render(); alertNew(); } });
+  onData(w => { if (w === 'orders' || w === 'menu'){ render(); if (w === 'orders') alertNew(); } });
   render();
 
   setInterval(() => {
@@ -146,6 +161,7 @@ function ticket(o){
   const ms = Date.now() - o.at, req = isReq(o);
   const rej = o.cancel && o.cancel.state === 'rejected';
   const b = busy.has(o.key);
+  const hasRecipe = data.menu.length > 0;
   const banner = req ? `<div class="cxbox"><b>⚠ Thu ngân xin hủy món này</b>${
       esc(o.cancel.reason || 'Không nêu lý do')}${o.cancel.note ? ' — ' + esc(o.cancel.note) : ''}</div>` : '';
   const acts = req
@@ -160,10 +176,11 @@ function ticket(o){
     </div>
     <div class="mid">
       <div class="q">${Number(o.quantity) || 1}</div>
-      <div style="flex:1;min-width:0">
+      <div class="info">
         <div class="nm">${esc(o.item)}</div>
-        ${o.price != null ? `<div class="pv">${money(o.price*(Number(o.quantity)||1))}</div>` : ''}
+        <div class="stt">STT <b>#${esc(o.stt ?? '—')}</b>${o.price != null ? ` · <span class="pv">${money(o.price*(Number(o.quantity)||1))}</span>` : ''}</div>
       </div>
+      ${hasRecipe ? `<button class="recipe-btn" data-recipe="${esc(o.stt)}" title="Xem công thức">📋</button>` : ''}
     </div>
     ${banner}${rej ? '<div class="cxtag">Đã từ chối yêu cầu hủy</div>' : ''}${acts}</article>`;
 }

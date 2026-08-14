@@ -5,7 +5,7 @@
    ========================================================================== */
 import {
   el, esc, rxEsc, money,
-  data, onData, priceOf, nameOf, toast, store
+  data, onData, priceOf, nameOf, toast, sheet, store
 } from './core.js';
 
 let src     = store.get('prep.src', 'prep');   // prep | drink
@@ -171,6 +171,32 @@ export function closeDetail(){
   return true;
 }
 export const isDetailOpen = () => !!openKey;
+
+/* mở công thức trong sheet (dùng từ KDS) */
+export function openRecipeSheet(stt){
+  const r = data.menu.find(row => String(row['STT']) === String(stt));
+  if (!r){ toast('Không tìm thấy công thức', 'err'); return; }
+  const raw = String(r['Định lượng'] || '').trim();
+  const lines = splitIngredients(raw);
+  const ingHTML = lines.length
+    ? lines.map(line => {
+        const i = line.indexOf(':');
+        const html = i > -1
+          ? `<b>${esc(line.slice(0,i).trim())}</b><span>: ${esc(line.slice(i+1).trim())}</span>`
+          : esc(line);
+        return `<div class="ing"><span class="dot"></span><span class="n">${html}</span></div>`;
+      }).join('')
+    : `<p style="font-size:13.5px;color:var(--ink-3)">Chưa có định lượng.</p>`;
+  const pr = priceOf(r);
+  sheet({
+    title: nameOf(r),
+    desc: `Mã #${esc(String(stt))} · ${esc(r['Nhóm'] || '')}${pr != null ? ' · ' + money(pr) : ''}`,
+    body: `
+      <div class="sec-label" style="margin-top:0">Định lượng</div>
+      <div class="card"><div class="card-body" style="padding:8px 14px">${ingHTML}</div></div>`,
+    actions:[{ label:'Đóng' }]
+  });
+}
 
 function detailHTML(r){
   const isPrep = src === 'prep';
