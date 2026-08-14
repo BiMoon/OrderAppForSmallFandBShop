@@ -1,55 +1,57 @@
 {
   "_ĐỌC_TRƯỚC_KHI_DÙNG": [
-    "Đây là bản ĐỀ NGHỊ, không phải bản đang chạy.",
+    "Dựa trên rules THẬT đang chạy (chủ quán gửi 14/08/2026).",
     "",
-    "QUAN TRỌNG NHẤT: chỗ nào ghi <<ĐIỀU KIỆN ĐANG DÙNG>> thì DÁN ĐÚNG điều",
-    "kiện đang có ở nhánh `orders` trong Console — nghe nói là dạng",
-    "  auth != null && auth.token.email == 'email-cua-quan@gmail.com'",
-    "Đừng thay bằng `auth != null` cho gọn: `bills` chứa doanh thu, để lỏng",
-    "hơn phần còn lại của database là BẤT KỲ tài khoản Google nào trên đời",
-    "cũng đọc được sổ tiền của quán.",
+    "ĐIỀU QUAN TRỌNG NHẤT: rules gốc đặt .read/.write ở NGAY GỐC, mà trong",
+    "Realtime Database quyền đọc/ghi CHẢY XUỐNG mọi nhánh con và nhánh con",
+    "KHÔNG thu hẹp lại được. Nghĩa là `bills` và `counters` ĐÃ được cấp quyền",
+    "rồi — thêm .read/.write cho chúng chỉ có thể NỚI RỘNG, không bao giờ siết.",
+    "Nên phần thêm dưới đây CHỈ có .validate.",
     "",
-    "Đo được 14/08/2026: gọi REST không đăng nhập vào /orders.json và",
-    "/bills.json đều trả 401 — rules hiện tại đã đòi đăng nhập.",
+    "Ba chỗ đã sửa so với bản gốc:",
+    "  1. Thêm ngoặc quanh danh sách email. `&&` bám chặt hơn `||`, nên bản gốc",
+    "     đọc ra là (auth != null && email===A) || email===B || email===C —",
+    "     hai email sau KHÔNG hề đi kèm kiểm tra auth != null.",
+    "  2. Danh sách .read và .write phải là CÙNG một danh sách. Bản gốc là hai",
+    "     tập email rời nhau, nghĩa là ai đọc được thì không ghi được và ngược",
+    "     lại.",
+    "  3. Thêm .validate cho bills và counters.",
     "",
-    "Đối chiếu với bản trong Console trước khi dán:",
-    "console.firebase.google.com/project/quanlyphachequan/database/quanlyphachequan-default-rtdb/rules",
-    "Nhánh nào có trong Console mà không có ở đây thì GIỮ LẠI.",
+    "Thay <<EMAIL_1..3>> bằng email thật của người dùng hệ thống.",
     "",
-    "Webhook SePay ghi bằng Admin SDK nên BỎ QUA toàn bộ file này — siết chặt",
-    "tới đâu cũng không chặn được đường tiền tự động."
+    "Webhook SePay ghi bằng Admin SDK nên BỎ QUA toàn bộ file này."
   ],
 
   "rules": {
-    "orders":    { ".read": "<<ĐIỀU KIỆN ĐANG DÙNG>>", ".write": "<<ĐIỀU KIỆN ĐANG DÙNG>>" },
-    "history":   { ".read": "<<ĐIỀU KIỆN ĐANG DÙNG>>", ".write": "<<ĐIỀU KIỆN ĐANG DÙNG>>" },
-    "cancelled": { ".read": "<<ĐIỀU KIỆN ĐANG DÙNG>>", ".write": "<<ĐIỀU KIỆN ĐANG DÙNG>>" },
+    ".read":  "auth != null && (auth.token.email === '<<EMAIL_1>>' || auth.token.email === '<<EMAIL_2>>' || auth.token.email === '<<EMAIL_3>>')",
+    ".write": "auth != null && (auth.token.email === '<<EMAIL_1>>' || auth.token.email === '<<EMAIL_2>>' || auth.token.email === '<<EMAIL_3>>')",
 
     "bills": {
-      ".read": "<<ĐIỀU KIỆN ĐANG DÙNG>>",
       "$ma": {
-        ".write": "<<ĐIỀU KIỆN ĐANG DÙNG>>",
-
         "//": [
-          "Khóa PHẢI là mã hóa đơn đúng dạng QCH+10 số. Chặn luôn chuyện một",
-          "lỗi lập trình đẻ ra bills/undefined hay bills/-N4xK… mà webhook",
-          "không bao giờ tìm thấy.",
-          "Chỉ chạy khi GHI; xóa hóa đơn thì .validate không được xét."
+          "Không có .read/.write ở đây — đã chảy xuống từ gốc.",
+          ".validate thì KHÔNG chảy xuống, nên đây là chỗ duy nhất ràng buộc được.",
+          "",
+          "Khóa PHẢI đúng dạng mã hóa đơn. Chặn luôn chuyện một lỗi lập trình đẻ",
+          "ra bills/undefined hay bills/-N4xK… mà webhook không bao giờ tìm thấy",
+          "— trong khi tiền thì đã vào tài khoản.",
+          "",
+          "Xóa hóa đơn vẫn được: .validate không xét khi newData là null."
         ],
         ".validate": "$ma.matches(/^QCH[0-9]{10}$/) && newData.hasChildren(['table','total','status'])",
 
+        "code":       { ".validate": "newData.val() === $ma" },
         "total":      { ".validate": "newData.isNumber() && newData.val() >= 0" },
-        "status":     { ".validate": "newData.isString() && (newData.val() === 'unpaid' || newData.val() === 'paid')" },
         "paidAmount": { ".validate": "newData.isNumber() && newData.val() >= 0" },
-        "code":       { ".validate": "newData.val() === $ma" }
+        "status":     { ".validate": "newData.isString() && (newData.val() === 'unpaid' || newData.val() === 'paid')" },
+        "payMethod":  { ".validate": "newData.val() === null || newData.val() === 'tienmat' || newData.val() === 'chuyenkhoan'" },
+        "paidBy":     { ".validate": "newData.val() === null || newData.val() === 'sepay' || newData.val() === 'nguoi'" }
       }
     },
 
     "counters": {
       "bills": {
-        ".read": "<<ĐIỀU KIỆN ĐANG DÙNG>>",
         "$ngay": {
-          ".write": "<<ĐIỀU KIỆN ĐANG DÙNG>>",
           "//": "Chỉ được tăng đúng 1. Máy khách không nhảy cóc số thứ tự được.",
           ".validate": "newData.isNumber() && (data.exists() ? newData.val() === data.val() + 1 : newData.val() === 1)"
         }
