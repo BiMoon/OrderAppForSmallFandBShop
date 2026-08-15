@@ -482,3 +482,24 @@ input:focus,select:focus,textarea:focus{
 .nb-tem-doi em{display:block;font-style:normal;color:var(--ink-3);font-size:12px;margin-top:1px}
 .nb-tem-cho,.nb-tem-loi{font-size:12.5px;color:var(--ink-3);margin-top:8px;line-height:1.45}
 .nb-tem-loi{color:var(--late)}
+
+/* ── ghi chú theo món ─────────────────────────────────────────────────────
+   Đây là thứ người pha phải đọc được từ xa một mét, không phải chú thích mờ
+   ở góc. Tuỳ chọn và ghi chú tô khác nhau: một cái là lựa chọn có sẵn, cái
+   kia là câu khách tự dặn — nhầm hai thứ đó là pha sai. */
+.crow .cnote, .pcard .cnote{
+  font-size:12.5px;line-height:1.4;margin-top:3px;
+  color:var(--brand);font-weight:600;
+}
+.crow .acts button[data-co]{color:var(--brand);border-color:var(--brand)}
+
+.tk .tkopt{
+  font-size:15px;font-weight:700;line-height:1.35;margin-top:4px;
+  color:var(--brand);
+}
+.tk .tknote{
+  font-size:14.5px;font-weight:600;line-height:1.4;margin-top:5px;
+  padding:6px 9px;border-radius:9px;
+  color:var(--ink);background:var(--warn-soft);
+  border-left:3px solid var(--warn);
+}

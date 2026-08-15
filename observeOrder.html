@@ -174,6 +174,15 @@
   .ticket.done{opacity:0;transform:scale(.96);pointer-events:none}
   @keyframes pop{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
 
+  /* Tuỳ chọn và ghi chú của khách — thứ người pha phải đọc được từ xa. Tô
+     khác nhau vì một cái là lựa chọn có sẵn, cái kia là câu khách tự dặn. */
+  .t-opt{display:block;font-size:14.5px;font-weight:700;color:var(--brand);margin-top:4px}
+  .t-note{
+    display:block;font-size:14px;font-weight:600;line-height:1.4;margin-top:6px;
+    padding:6px 9px;border-radius:9px;
+    background:var(--warn-soft);border-left:3px solid var(--warn);color:var(--ink);
+  }
+
   .t-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
   .t-table{
     display:inline-flex;align-items:baseline;gap:5px;
@@ -612,7 +621,9 @@ function ticketHTML(key, t){
     </div>
     <div class="t-body">
       <div class="t-qty">${Number(t.quantity) || 1}</div>
-      <div class="t-name">${esc(t.item)}</div>
+      <div class="t-name">${esc(t.item)}${
+        t.tuyChon ? `<span class="t-opt">${esc(t.tuyChon)}</span>` : ''}${
+        t.ghiChu ? `<span class="t-note">✎ ${esc(t.ghiChu)}</span>` : ''}</div>
       <span class="t-recipe-hint">📋 Công thức</span>
     </div>
     ${banner}
@@ -899,6 +910,7 @@ const toTicket = d => ({
   stt: d.stt ?? null,
   price: d.price ?? null,     // đơn giá đã chốt lúc thu ngân gửi đơn
   sentAt: Number(d.sentAt) || null,   // lúc GỌI món — chép sang history, xem complete()
+  tuyChon: d.tuyChon || '', ghiChu: d.ghiChu || '',
   cancel: d.cancel || null,
   at: parseClock(d.time)
 });

@@ -201,6 +201,8 @@ function ticket(o){
       <div class="q">${Number(o.quantity) || 1}</div>
       <div class="info">
         <div class="nm">${esc(o.item)}</div>
+        ${o.tuyChon ? `<div class="tkopt">${esc(o.tuyChon)}</div>` : ''}
+        ${o.ghiChu ? `<div class="tknote">✎ ${esc(o.ghiChu)}</div>` : ''}
         <div class="stt">STT <b>#${esc(o.stt ?? '—')}</b>${o.price != null ? ` · <span class="pv">${money(o.price*(Number(o.quantity)||1))}</span>` : ''}</div>
       </div>
       ${hasRecipe ? `<button class="recipe-btn" data-recipe="${esc(o.stt)}" title="Xem công thức">📋</button>` : ''}

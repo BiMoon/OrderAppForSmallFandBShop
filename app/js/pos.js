@@ -15,6 +15,7 @@ import {
 import { inHoaDon, cauHinhIn, luuCauHinhIn, CACH_GUI } from './inHoaDon.js';
 import { KHO } from './escpos.js';
 import { xemTem, ghiTem, quaTang, chuanHoaSdt, cauHinhTem, luuCauHinhTem, temBatChua } from './tem.js';
+import { TUY_CHON_NHANH, themVaoGio, suaMoTa, moTaMon } from './gioHang.js';
 
 let table    = store.get('pos.table', 1);
 let tab      = 'pad';          // pad | menu
@@ -472,6 +473,7 @@ function bind(){
     if (b.dataset.a === 'dec'){ o.qty--; if (o.qty < 1) cart = cart.filter(x=>x.id!==id); }
     if (b.dataset.a === 'del') cart = cart.filter(x=>x.id!==id);
     if (b.dataset.a === 'tbl') return moveSheet(o);
+    if (b.dataset.a === 'note') return ghiChuSheet(o);
     saveCart(); renderAll();
   };
   el('posCartFoot').onclick = e => {
@@ -580,10 +582,13 @@ function renderMenu(){
 
 /* ─────────────────── giỏ hàng ─────────────────── */
 function addToCart(it, n){
-  const ex = cart.find(o => String(o.stt) === String(it['STT']) && o.table === table);
-  if (ex){ ex.qty += n; ex.time = hm(); }
-  else cart.push({ id: nextId++, stt: it['STT'], name: nameOf(it),
-                   qty: n, table, price: priceOf(it), time: hm() });
+  // Luật gộp nằm ở gioHang.js: hai ly chỉ gộp khi cùng món, cùng bàn, CÙNG
+  // tuỳ chọn và CÙNG ghi chú. Món vừa bấm chưa có ghi chú nên nó gộp vào dòng
+  // "không ghi chú", không đụng tới dòng "ít đường" đứng cạnh.
+  const kq = themVaoGio(cart, {
+    stt: it['STT'], name: nameOf(it), table, price: priceOf(it),
+  }, n, nextId, hm());
+  cart = kq.cart; nextId = kq.idKe;
   cartTab = 'all'; saveCart();
   audio.buzz();
   toast(`+${n} ${nameOf(it)} · bàn ${table}`, 'ok');
@@ -613,10 +618,13 @@ function renderCart(){
       </div>
       <div class="info">
         <div class="nm">${esc(o.name)}</div>
+        ${moTaMon(o) ? `<div class="cnote">${esc(moTaMon(o))}</div>` : ''}
         <div class="mt">#${esc(o.stt)} · Bàn ${o.table} · ${
           o.price != null ? money(o.price*o.qty) : '<span style="color:var(--warn)">chưa có giá</span>'}</div>
       </div>
       <div class="acts">
+        <button data-a="note" data-id="${o.id}" title="Ghi chú cho ly này"
+          ${moTaMon(o) ? 'data-co' : ''}>✎</button>
         <button data-a="tbl" data-id="${o.id}" title="Đổi bàn">🔄</button>
         <button data-a="del" data-id="${o.id}" title="Xóa">✕</button>
       </div>
@@ -657,6 +665,58 @@ function clearSheet(){
     ]
   });
 }
+/**
+ * Ghi chú cho MỘT dòng giỏ: chip bấm nhanh + một ô chữ tự do.
+ *
+ * Chip cho mấy câu khách nói nhiều nhất (ít đá, ít đường…) vì gõ tay giữa giờ
+ * cao điểm là không kịp; ô chữ cho phần còn lại. Hai thứ lưu tách nhau chứ
+ * không nhập một chuỗi: sau này còn đếm được "bao nhiêu ly ít đường", và nhãn
+ * dán ly in chúng khác cỡ chữ.
+ */
+function ghiChuSheet(o){
+  let chon = new Set((o.tuyChon || '').split(',').map(x => x.trim()).filter(Boolean));
+
+  sheet({
+    title: 'Ghi chú cho ly này',
+    desc: `${o.name} · bàn ${o.table} · ${o.qty} ly`,
+    body: `
+      <div class="sec-label" style="margin-top:0">Tuỳ chọn</div>
+      <div class="chiprow" id="gcChip">
+        ${TUY_CHON_NHANH.map(t =>
+          `<button class="chip ${chon.has(t) ? 'active' : ''}" data-t="${esc(t)}">${esc(t)}</button>`).join('')}
+      </div>
+      <div class="sec-label">Khách dặn thêm</div>
+      <input type="text" id="gcText" maxlength="200" autocomplete="off"
+             value="${esc(o.ghiChu || '')}" placeholder="ví dụ: lấy ống hút to, ít kem">
+      <p style="color:var(--ink-3);font-size:12.5px;line-height:1.5;margin-top:8px">
+        Ghi chú đi theo <b>từng ly</b>. Ly nào khác ghi chú thì tự tách thành dòng riêng —
+        nhìn thì thừa, nhưng đó đúng là hai ly khác nhau.
+      </p>`,
+    actions: [
+      { label: 'Thôi' },
+      { label: 'Xong', cls: 'solid', onClick(){
+          cart = suaMoTa(cart, o.id, {
+            tuyChon: [...chon].join(', '),
+            ghiChu: el('gcText') ? el('gcText').value : '',
+          });
+          saveCart(); renderAll();
+        }
+      },
+    ],
+  });
+
+  setTimeout(() => {
+    const box = el('gcChip');
+    if (!box) return;
+    box.onclick = (e) => {
+      const b = e.target.closest('.chip'); if (!b) return;
+      const t = b.dataset.t;
+      if (chon.has(t)) chon.delete(t); else chon.add(t);
+      b.classList.toggle('active', chon.has(t));
+    };
+  }, 50);
+}
+
 function moveSheet(o){
   sheet({
     title:'Chuyển sang bàn khác',
@@ -711,6 +771,7 @@ function renderPending(){
         <div class="q">${Number(o.quantity)||1}</div>
         <div style="flex:1;min-width:0">
           <div class="nm">${esc(o.item)}</div>
+          ${moTaMon(o) ? `<div class="cnote">${esc(moTaMon(o))}</div>` : ''}
           <div class="mt">Bàn ${esc(o.table ?? '—')} · gửi ${esc(o.time||'')}${
             o.price != null ? ' · ' + money(o.price*(Number(o.quantity)||1)) : ''}</div>
         </div>

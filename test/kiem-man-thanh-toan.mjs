@@ -313,6 +313,75 @@ console.log('\nMàn thanh toán trong quán\n');
   await ctx.close();
 }
 
+/* ── 7. ghi chú theo món: từ quầy thu ngân xuống quầy pha ────────────────── */
+{
+  const { page, ctx, loi } = await mo();
+  await page.locator('#posView button[data-v="entry"]').click();
+
+  // Gõ mã 1 rồi thêm hai lần: phải GỘP thành một dòng 2 ly.
+  const themMon = async (ma) => {
+    for (const k of String(ma)) await page.locator(`#posNumpad [data-k="${k}"]`).click();
+    await page.locator('#posNumpad [data-k="add"]').click();
+    await page.waitForTimeout(200);
+  };
+  await themMon(1);
+  await themMon(1);
+  await page.locator('#posView button[data-v="cart"]').click();
+  await page.waitForSelector('.crow', { timeout: 5000 });
+  bao(await page.locator('.crow').count() === 1, 'thêm hai lần cùng món thì gộp một dòng');
+  bao((await page.locator('.crow .qv').innerText()).trim() === '2', 'gộp thành 2 ly');
+
+  // Ghi chú cho dòng đó.
+  await page.locator('.crow [data-a="note"]').click();
+  await page.waitForSelector('#gcChip .chip', { timeout: 5000 });
+  await page.locator('#gcChip .chip', { hasText: 'Ít đường' }).click();
+  await page.locator('#gcText').fill('lấy ống hút to');
+  await page.locator('#shFoot .btn.solid').click();
+  await page.waitForTimeout(300);
+  bao((await page.locator('.crow .cnote').innerText()).includes('Ít đường · lấy ống hút to'),
+      'giỏ hiện lại ghi chú vừa nhập');
+
+  await page.screenshot({ path: 'test/anh-gio-ghi-chu.png' });
+
+  // Thêm lại đúng món đó: KHÔNG được gộp vào dòng đã có ghi chú.
+  await page.locator('#posView button[data-v="entry"]').click();
+  await themMon(1);
+  await page.locator('#posView button[data-v="cart"]').click();
+  await page.waitForTimeout(200);
+  bao(await page.locator('.crow').count() === 2,
+      'ly không ghi chú KHÔNG được gộp vào dòng "ít đường" — gộp là pha sai cho khách');
+
+  // Gửi xuống quầy pha rồi soi đúng cái đã ghi vào RTDB.
+  await page.locator('#posSend').click();
+  await page.waitForTimeout(600);
+  const daGui = await page.evaluate(() => Object.values(window.__db.store.orders ?? {}));
+  const coGhiChu = daGui.find(o => o.ghiChu);
+  bao(daGui.length === 2, `gửi đúng 2 dòng xuống quầy (thấy ${daGui.length})`);
+  bao(coGhiChu?.tuyChon === 'Ít đường', `RTDB giữ tuỳ chọn (thấy "${coGhiChu?.tuyChon}")`);
+  bao(coGhiChu?.ghiChu === 'lấy ống hút to', `RTDB giữ ghi chú (thấy "${coGhiChu?.ghiChu}")`);
+  bao(daGui.every(o => o.tuyChon !== undefined && o.ghiChu !== undefined),
+      'không dòng nào để undefined lọt xuống RTDB');
+
+  // Thu ngân phải soi lại được cái mình vừa gửi, không chỉ quầy pha thấy.
+  await page.locator('#posView button[data-v="pending"]').click();
+  await page.waitForSelector('.pcard', { timeout: 5000 });
+  bao(await page.locator('.pcard .cnote').count() === 1,
+      'danh sách Chờ pha của thu ngân cũng hiện ghi chú');
+  await page.screenshot({ path: 'test/anh-cho-pha-ghi-chu.png' });
+
+  // Và quầy pha — nơi ghi chú thật sự phải đọc được từ xa một mét.
+  await page.locator('#tabbar button[data-go="kds"]').click();
+  await page.waitForSelector('.tk', { timeout: 5000 });
+  await page.waitForTimeout(300);
+  bao(await page.locator('.tk .tkopt').count() === 1, 'phiếu pha chế hiện tuỳ chọn');
+  bao((await page.locator('.tk .tknote').innerText()).includes('lấy ống hút to'),
+      'phiếu pha chế hiện câu khách dặn');
+  await page.screenshot({ path: 'test/anh-phieu-ghi-chu.png' });
+
+  bao(!loi.length, `không có lỗi JS${loi.length ? ': ' + loi[0] : ''}`);
+  await ctx.close();
+}
+
 await browser.close();
 server.close();
 console.log(hong ? `\n✗ ${hong} chỗ sai\n` : '\n✓ Tất cả đúng\n');

@@ -259,6 +259,7 @@ export function initData(){
     data.orders = snapToArray(snap).map(({key, val:d}) => ({
       key, item: d.item, quantity: d.quantity, table: d.table, time: d.time,
       stt: d.stt ?? null, price: d.price ?? null,
+      tuyChon: d.tuyChon || '', ghiChu: d.ghiChu || '',
       cancel: d.cancel || null, at: parseClock(d.time),
       // Giờ máy chủ — dùng để cắt phiên bàn. `at` suy từ "HH:MM" nên phụ thuộc
       // đồng hồ của máy, không đủ tin để quyết định tiền.
@@ -339,6 +340,10 @@ export function sendOrders(cart){
   return Promise.all(cart.map(o => push(ordersRef, {
     item: o.name, quantity: o.qty, table: o.table,
     stt: o.stt ?? null, price: o.price ?? null,
+    // Hai thứ người pha cần mà bản cũ không gửi: tuỳ chọn bấm nhanh, và câu
+    // khách dặn. Thiếu chúng thì phiếu pha chế chỉ có tên món, và nhãn dán ly
+    // cũng chẳng có gì để in.
+    tuyChon: o.tuyChon || '', ghiChu: o.ghiChu || '',
     time: hm(), status: 'Chờ pha', sentAt: serverTimestamp()
   })));
 }
