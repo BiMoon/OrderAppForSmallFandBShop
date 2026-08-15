@@ -28,10 +28,10 @@ export const QUAN = {
      thì lại phải giải thích. 26 ký tự, vừa cả khổ 58mm (32 cột). */
   phapNhan: 'Hộ Kinh Doanh Cậu Hai Long',
 
-  /* Mã số thuế. ĐỂ TRỐNG cho tới khi có số thật — in một mã số sai còn tệ hơn
-     hẳn không in gì, vì nó biến một thiếu sót thành một lời khai không đúng.
-     Điền vào đây là tự khắc hiện trên phiếu, không phải sửa chỗ nào khác. */
-  maSoThue: '',
+  /* Mã số thuế. Để trống thì phiếu bỏ hẳn dòng đó, không in "MST:" rỗng.
+     Có test canh đúng 10 hoặc 13 chữ số — in một mã số gõ sai còn tệ hơn hẳn
+     không in gì, vì nó biến một thiếu sót thành một lời khai không đúng. */
+  maSoThue: '9000369315',
 
   diaChi: '371/3 Trường Chinh, P. Tân Bình, TP.HCM',
 

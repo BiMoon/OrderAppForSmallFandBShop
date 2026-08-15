@@ -464,3 +464,27 @@ test('pháp nhân không tràn khổ giấy hẹp nhất', () => {
   assert.equal(ngatDong(QUAN.phapNhan, SO_COT['58']).length, 1,
     'gãy hai dòng ở khổ 58mm thì đầu phiếu trông lộn xộn — rút gọn tên lại');
 });
+
+test('mã số thuế đúng dạng — 10 chữ số, hoặc 13 nếu có mã đơn vị phụ thuộc', () => {
+  if (!QUAN.maSoThue) return;                       // chưa đăng ký thì thôi
+  const so = QUAN.maSoThue.replace(/\D/g, '');
+  assert.equal(so, QUAN.maSoThue, 'đừng chèn dấu gạch hay khoảng trắng vào mã số');
+  assert.ok(so.length === 10 || so.length === 13,
+    `MST có ${so.length} chữ số — gõ thiếu hay thừa một số là in ra một lời khai sai`);
+});
+
+test('có mã số thuế thì in lên phiếu, ngay dưới tên pháp nhân', () => {
+  if (!QUAN.maSoThue) return;
+  const chu = chuCua(boCucHoaDon(daTra(), {}));
+  const i = chu.findIndex((c) => c.includes(QUAN.maSoThue));
+  assert.ok(i >= 0, 'có mã số mà không in thì điền vào quanInfo.js để làm gì');
+  assert.ok(chu[i].startsWith('MST'), `nhãn phải nói rõ đây là mã số thuế, thấy: ${chu[i]}`);
+  assert.equal(i - chu.indexOf(QUAN.phapNhan), 1, 'MST phải nằm ngay dưới tên pháp nhân');
+});
+
+test('dòng MST không tràn khổ 58mm', () => {
+  if (!QUAN.maSoThue) return;
+  for (const k of boCucHoaDon(daTra(), { kho: '58' }).filter((x) => x.kieu === 'chu')) {
+    assert.ok(k.chu.length * (k.co || 1) <= SO_COT['58'], `"${k.chu}"`);
+  }
+});
