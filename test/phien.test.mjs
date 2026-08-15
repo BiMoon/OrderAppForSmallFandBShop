@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  mocCua, hoaDonCuaBan, hoaDonMoCuaBan, mocDaChot,
+  mocCua, hoaDonCuaBan, hoaDonMoCuaBan, mocDaChot, sanPhien, GIO_DOI_NGAY,
   monChuaTinhTien, trangThaiBan, tongTien,
 } from '../app/js/phien.js';
 
@@ -13,8 +13,10 @@ const don   = (tbl, ten, gia, luc, qty = 1) => ({ table: tbl, item: ten, price: 
 const xong  = (tbl, ten, gia, luc, qty = 1) => ({ table: tbl, item: ten, price: gia, quantity: qty, timestamp: luc, completedDate: HNAY });
 const hd    = (tbl, o = {}) => ({ table: tbl, code: o.code ?? 'QCH2608140001', status: 'unpaid', createdAt: o.createdAt ?? T(9), ...o });
 
-const goi = (p) => monChuaTinhTien({ hnay: HNAY, ...p });
-const tt  = (p) => trangThaiBan({ hnay: HNAY, ...p });
+// Cắm 'bây giờ' vào 20:00 cùng ngày. Bỏ trống thì mọi test dính đồng hồ thật
+// và sẽ đỏ vào một buổi sáng nào đó mà không ai hiểu vì sao.
+const goi = (p) => monChuaTinhTien({ hnay: HNAY, luc: T(20), ...p });
+const tt  = (p) => trangThaiBan({ hnay: HNAY, luc: T(20), ...p });
 
 // ── mốc thời gian ───────────────────────────────────────────────────────────
 
@@ -126,10 +128,65 @@ test('hóa đơn bàn khác không dịch mốc của bàn này', () => {
   assert.equal(items.length, 1);
 });
 
-test('món của hôm qua không lọt vào hóa đơn hôm nay', () => {
-  const hom_qua = { ...xong(3, 'Cũ', 10000, T(9)), completedDate: '2026-08-13' };
-  const items = goi({ orders: [], history: [hom_qua], bills: [], tbl: 3 });
+test('món của ca hôm qua không lọt vào hóa đơn hôm nay', () => {
+  const homQua = {
+    table: 3, item: 'Cũ', price: 10000, quantity: 1,
+    timestamp: new Date('2026-08-13T09:00:00+07:00').getTime(),
+    completedDate: '2026-08-13',
+  };
+  const items = goi({ orders: [], history: [homQua], bills: [], tbl: 3 });
   assert.equal(items.length, 0);
+});
+
+/* ══════════════ ngày kinh doanh: ly qua nửa đêm ══════════════
+
+   Đây là lỗi mất tiền thật: bản cũ lọc lịch sử bằng `completedDate === hnay`,
+   nên ly gọi 23:50 rơi khỏi hóa đơn khách trả lúc 00:05.                    */
+
+const NUA_DEM = {
+  hnay: '2026-08-15',
+  luc:  new Date('2026-08-15T00:05:00+07:00').getTime(),
+  ly:   {
+    table: 3, item: 'Trà đào cam sả', price: 45000, quantity: 1,
+    timestamp: new Date('2026-08-14T23:58:00+07:00').getTime(),
+    sentAt:    new Date('2026-08-14T23:50:00+07:00').getTime(),
+    completedDate: '2026-08-14',
+  },
+};
+
+test('ly gọi 23:50 VẪN nằm trong hóa đơn khách trả lúc 00:05', () => {
+  const items = monChuaTinhTien({
+    orders: [], history: [NUA_DEM.ly], bills: [], tbl: 3,
+    hnay: NUA_DEM.hnay, luc: NUA_DEM.luc,
+  });
+  assert.equal(items.length, 1,
+    'lọc theo lịch ngày thì ly này biến mất và khách trả thiếu 45.000đ — không ai biết');
+  assert.equal(tongTien(items), 45000);
+});
+
+test('00:05 vẫn thuộc ngày kinh doanh hôm trước', () => {
+  const sang = new Date('2026-08-15T00:05:00+07:00').getTime();
+  const trua = new Date('2026-08-15T14:00:00+07:00').getTime();
+  assert.equal(sanPhien(sang), new Date(`2026-08-14T0${GIO_DOI_NGAY}:00:00+07:00`).getTime());
+  assert.equal(sanPhien(trua), new Date(`2026-08-15T0${GIO_DOI_NGAY}:00:00+07:00`).getTime());
+  assert.ok(sanPhien(sang) < sanPhien(trua), 'ca đêm và ca sáng hôm sau là hai phiên khác nhau');
+});
+
+test('bàn đã chốt hóa đơn thì mốc chốt vẫn thắng, không dính sàn ngày', () => {
+  const chot = new Date('2026-08-14T22:00:00+07:00').getTime();
+  const items = monChuaTinhTien({
+    orders: [], history: [NUA_DEM.ly], bills: [{ table: 3, status: 'paid', tinhToiLuc: chot }],
+    tbl: 3, hnay: NUA_DEM.hnay, luc: NUA_DEM.luc,
+  });
+  assert.equal(items.length, 1, 'ly gọi 23:50 phát sinh SAU hóa đơn 22:00 nên vẫn phải tính');
+});
+
+test('ly của ca đêm KHÔNG bị tính lại vào ca sáng hôm sau', () => {
+  const items = monChuaTinhTien({
+    orders: [], history: [NUA_DEM.ly], bills: [], tbl: 3,
+    hnay: '2026-08-15', luc: new Date('2026-08-15T09:00:00+07:00').getTime(),
+  });
+  assert.equal(items.length, 0, '9 giờ sáng đã sang phiên mới — khách khác ngồi vào bàn đó');
 });
 
 // ── dữ liệu thiếu mốc thời gian ─────────────────────────────────────────────

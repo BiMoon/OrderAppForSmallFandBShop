@@ -57,9 +57,32 @@ export function heSoConLai(b) {
 export const mocHoaDon = (b) => Number(b?.tinhToiLuc) || Number(b?.paidAt) || 0;
 
 /**
+ * Cách trả tiền, gom về đúng ba rổ mà chủ quán cần đối soát.
+ *
+ * `payMethod` đã được ghi vào hóa đơn từ lâu (`core.js:traTay`) nhưng màn Thống
+ * kê chưa từng đọc tới — nên cuối ngày không ai biết két phải có bao nhiêu.
+ *
+ * `khac` gom cả hóa đơn cũ chưa có trường này lẫn giá trị lạ. Đừng im lặng dồn
+ * chúng vào tiền mặt: đối soát mà sai về phía "két phải có nhiều hơn" thì
+ * người đếm két bị nghi oan.
+ */
+export const CACH_TRA = {
+  tienmat:    { nhan: 'Tiền mặt',    icon: '💵' },
+  chuyenkhoan:{ nhan: 'Chuyển khoản', icon: '🏦' },
+  khac:       { nhan: 'Không rõ',     icon: '❓' },
+};
+
+export function chuanHoaCach(v) {
+  const s = String(v ?? '').toLowerCase().replace(/[\s_-]/g, '');
+  if (s === 'tienmat' || s === 'cash') return 'tienmat';
+  if (s === 'chuyenkhoan' || s === 'bank' || s === 'sepay' || s === 'ck') return 'chuyenkhoan';
+  return 'khac';
+}
+
+/**
  * Dãy cửa sổ thời gian của từng bàn, sắp tăng dần theo mốc.
  *
- * @returns {Map<string, Array<{den:number, heSo:number, code:string|null}>>}
+ * @returns {Map<string, Array<{den:number, heSo:number, code:string|null, cach:string}>>}
  */
 export function cuaSoHoaDon(bills = []) {
   const theoBan = new Map();
@@ -69,7 +92,9 @@ export function cuaSoHoaDon(bills = []) {
     if (!den) continue;                       // không có mốc thì không xếp được
     const k = String(b.table);
     if (!theoBan.has(k)) theoBan.set(k, []);
-    theoBan.get(k).push({ den, heSo: heSoConLai(b), code: b.code ?? b.key ?? null });
+    theoBan.get(k).push({
+      den, heSo: heSoConLai(b), code: b.code ?? b.key ?? null, cach: chuanHoaCach(b.payMethod),
+    });
   }
   for (const ds of theoBan.values()) ds.sort((a, b) => a.den - b.den);
   return theoBan;
@@ -97,6 +122,7 @@ export function hoaDonCuaDong(cuaSo, tbl, moc) {
  *   thucThu   số tiền thật sự thu được của dòng đó
  *   heSo      phần còn lại sau giảm (1 = nguyên giá)
  *   maHD      mã hóa đơn đã thu, hoặc null
+ *   cach      cách trả tiền của hóa đơn đó ('tienmat'|'chuyenkhoan'|'khac'), hoặc null
  *   chuaChot  true nếu chưa có hóa đơn đã trả nào phủ dòng này
  *
  * Làm tròn từng dòng nên tổng có thể lệch vài đồng so với tổng các hóa đơn —
@@ -111,6 +137,7 @@ export function ganThucThu(rows = [], bills = []) {
       ...r,
       heSo,
       maHD: hd ? hd.code : null,
+      cach: hd ? hd.cach : null,
       chuaChot: !hd,
       thucThu: hd && heSo !== 1 ? Math.round(r.revenue * heSo) : r.revenue,
     };
@@ -127,4 +154,24 @@ export function congSo(rows = []) {
     else if (r.heSo !== 1) soDongGiam += 1;
   }
   return { goc, thuc, giam: goc - thuc, chuaChot, soDongGiam };
+}
+
+/**
+ * Cộng thực thu theo cách trả tiền.
+ *
+ * Dòng chưa nằm trong hóa đơn đã trả nào (`chuaChot`) bị bỏ ra ngoài hẳn — tiền
+ * đó chưa vào két thì không được đếm vào bất kỳ rổ nào, kẻo cuối ngày đi tìm
+ * một khoản không tồn tại.
+ *
+ * @returns {{tienmat:number, chuyenkhoan:number, khac:number, tong:number, chuaChot:number}}
+ */
+export function congTheoCachTra(rows = []) {
+  const kq = { tienmat: 0, chuyenkhoan: 0, khac: 0, tong: 0, chuaChot: 0 };
+  for (const r of rows) {
+    const tien = r.thucThu ?? r.revenue ?? 0;
+    if (r.chuaChot) { kq.chuaChot += tien; continue; }
+    kq[chuanHoaCach(r.cach)] += tien;
+    kq.tong += tien;
+  }
+  return kq;
 }

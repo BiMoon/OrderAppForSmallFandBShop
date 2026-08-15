@@ -10,6 +10,7 @@ import {
   toast, sheet, closeSheet, store, audio, keepAwake
 } from './core.js';
 import { openRecipeSheet } from './prep.js';
+import { choMayChu, loiBao } from './hangCho.js';
 
 /**
  * Nhãn tiền của một bàn, hiện ngay trên phiếu pha chế.

@@ -34,6 +34,27 @@ export const app  = initializeApp(firebaseConfig);
 export const db   = getDatabase(app);
 export const auth = getAuth(app);
 
+/**
+ * Ai đang đứng ở máy này.
+ *
+ * Trước bản này **không một lệnh ghi nào** mang theo danh tính: ai gửi đơn, ai
+ * kéo giảm giá 50%, ai xoá một hóa đơn đã thu tiền — đều không truy được.
+ * Cộng với việc xoá hóa đơn chỉ cần một cú bấm và thanh trượt giảm giá chạy
+ * tới 100% không cần ai duyệt, đó là lỗ hổng mất tiền chủ động và mất trong
+ * im lặng.
+ *
+ * Chỉ lấy email chứ không lấy `uid`: người đọc sổ là chủ quán, không phải lập
+ * trình viên. Chưa đăng nhập thì trả `null` — ghi chuỗi 'khong ro' vào dữ liệu
+ * là tự tạo ra một cái tên giả trông như thật.
+ */
+export const aiDangLam = () => auth.currentUser?.email ?? null;
+
+/** Dấu vết một thao tác: ai, lúc nào. Dán kèm mọi lệnh ghi đáng truy. */
+export const dauVet = (viec) => ({
+  [`${viec}Boi`]: aiDangLam(),
+  [`${viec}Luc`]: serverTimestamp(),
+});
+
 export function signInWithGoogle(){
   return signInWithPopup(auth, new GoogleAuthProvider());
 }
@@ -344,7 +365,8 @@ export function sendOrders(cart){
     // khách dặn. Thiếu chúng thì phiếu pha chế chỉ có tên món, và nhãn dán ly
     // cũng chẳng có gì để in.
     tuyChon: o.tuyChon || '', ghiChu: o.ghiChu || '',
-    time: hm(), status: 'Chờ pha', sentAt: serverTimestamp()
+    time: hm(), status: 'Chờ pha', sentAt: serverTimestamp(),
+    guiBoi: aiDangLam()
   })));
 }
 
@@ -370,7 +392,8 @@ export function completeOrder(o){
 
 export function requestCancel(key, reason, note){
   return update(ref(db, 'orders/' + key), {
-    cancel: { state:'requested', reason, note: note || null, at: serverTimestamp() }
+    cancel: { state:'requested', reason, note: note || null, at: serverTimestamp(),
+              boi: aiDangLam() }
   });
 }
 export const clearCancel = key => update(ref(db, 'orders/' + key), { cancel: null });
@@ -381,7 +404,9 @@ export function rejectCancel(o, barNote){
       state: 'rejected',
       reason: (o.cancel && o.cancel.reason) || null,
       barNote: barNote || 'Món đã/đang được pha.',
-      at: serverTimestamp()
+      at: serverTimestamp(),
+      boi: (o.cancel && o.cancel.boi) || null,
+      tuChoiBoi: aiDangLam()
     }
   });
 }
@@ -401,7 +426,11 @@ export function approveCancel(o){
     cancelledDate: d,
     cancelledMonth: d.substring(0,7),
     cancelledYear: d.substring(0,4),
-    timestamp: serverTimestamp()
+    timestamp: serverTimestamp(),
+    // Ai xin huỷ và ai duyệt. Huỷ món là chỗ tiền rời khỏi sổ mà không có
+    // khách nào trả — phải biết hai cái tên đó.
+    xinBoi: (o.cancel && o.cancel.boi) || null,
+    duyetBoi: aiDangLam()
   }).then(() => remove(ref(db, 'orders/' + o.key)));
 }
 
@@ -508,30 +537,62 @@ export async function saveBill(bill){
     paidAt: null,
     paidBy: null,
     payMethod: null,
+    ...dauVet('tao'),
   });
   return code;
 }
 
 /** Thu ngân nhận tiền mặt — hoặc tự đối chiếu app ngân hàng rồi bấm tay. */
-export function traTay(code, payMethod = 'tienmat'){
+export function traTay(code, payMethod = 'tienmat', khachDua = null){
   const b = data.bills.find(x => x.key === code);
+  const tong = Number(b?.total) || 0;
+  const dua = Number(khachDua) > 0 ? Math.round(Number(khachDua)) : tong;
   return update(ref(db, 'bills/' + code), {
     status: 'paid',
     payMethod,
     paidBy: 'nguoi',          // người bấm, không phải webhook — để còn đối soát
-    paidAmount: Number(b?.total) || 0,
+    // Thu đúng bằng hóa đơn. `khachDua` chỉ để tính tiền thối, KHÔNG được cộng
+    // vào doanh thu — đưa 500k cho hóa đơn 68k mà ghi 500k là sổ vống lên.
+    paidAmount: tong,
+    khachDua: dua,
+    tienThoi: Math.max(0, dua - tong),
     paidAt: serverTimestamp(),
+    ...dauVet('thu'),
   });
 }
 
-/** Mở lại hóa đơn đã đóng nhầm. Xóa sạch dấu vết đã trả để khỏi lệch sổ. */
+/**
+ * Mở lại hóa đơn đã đóng nhầm.
+ *
+ * Xóa sạch dấu vết ĐÃ TRẢ để khỏi lệch sổ — nhưng **giữ lại dấu vết ai mở**.
+ * Một hóa đơn bị mở đi mở lại là chuyện đáng nhìn, và nhìn được thì mới hỏi
+ * được.
+ */
 export function moLaiHoaDon(code){
   return update(ref(db, 'bills/' + code), {
     status: 'unpaid', payMethod: null, paidBy: null, paidAt: null, paidAmount: 0,
+    khachDua: null, tienThoi: null,
+    ...dauVet('moLai'),
   });
 }
 
-export const xoaHoaDon = code => remove(ref(db, 'bills/' + code));
+/**
+ * Xóa hóa đơn.
+ *
+ * Chép sang `billsXoa/` TRƯỚC khi xóa. Một cú bấm nhầm vào hóa đơn đã thu tiền
+ * là mất dấu khoản tiền đó vĩnh viễn, và bàn tính lại từ đầu — cảnh báo thì có
+ * mà đường lùi thì không. Bản sao rẻ hơn nhiều so với một buổi tối đi dò.
+ *
+ * Chép hỏng (mất mạng, thiếu quyền) thì **không xóa**: thà để lại một hóa đơn
+ * thừa còn hơn xóa mà không có bản sao.
+ */
+export async function xoaHoaDon(code){
+  const b = data.bills.find(x => x.key === code || x.code === code);
+  if (b) {
+    await set(ref(db, 'billsXoa/' + code), { ...b, ...dauVet('xoa') });
+  }
+  return remove(ref(db, 'bills/' + code));
+}
 
 /* ─────────────────── hóa đơn của một kỳ báo cáo ───────────────────
 

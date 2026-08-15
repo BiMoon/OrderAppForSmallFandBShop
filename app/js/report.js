@@ -13,7 +13,7 @@ import {
   el, esc, money, moneyShort, nf, ymd, addDays, dmy, slug, parsePrice,
   data, onData, resolvePrice, toast, store, mocCua, taiHoaDonKhoang
 } from './core.js';
-import { ganThucThu, congSo } from './thucThu.js';
+import { ganThucThu, congSo, congTheoCachTra, CACH_TRA } from './thucThu.js';
 
 let mode   = store.get('rp.mode', 'day');    // day | month | year | range | all
 let metric = 'rev';
@@ -22,6 +22,9 @@ let mounted = false;
 
 const CSS = `
 .rkpi{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.rtra{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;margin-top:4px}
+.rtra b{font-weight:700;text-align:right;font-variant-numeric:tabular-nums}
+.rtra span{color:var(--ink-2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rk{background:var(--surface);border:1px solid var(--line);border-radius:14px;
     padding:13px 14px;box-shadow:var(--shadow-1)}
 .rk.wide{grid-column:span 2}
@@ -108,6 +111,8 @@ function shell(){
       <div class="v" id="rpAvg" style="font-size:20px">–</div><div class="s" id="rpAvgSub"></div></div>
     <div class="rk wide hide" id="rpDiscCard"><div class="l">Đã giảm giá</div>
       <div class="v" id="rpDisc" style="font-size:20px">–</div><div class="s" id="rpDiscSub"></div></div>
+    <div class="rk wide" id="rpTraCard"><div class="l">Tiền vào bằng đường nào</div>
+      <div class="rtra" id="rpTra"></div><div class="s" id="rpTraSub"></div></div>
     <div class="rk wide"><div class="l">Món doanh thu cao nhất</div>
       <div class="v" id="rpTop" style="font-size:17px">–</div><div class="s" id="rpTopSub"></div></div>
     <div class="rk bad wide"><div class="l">Đã hủy</div>
@@ -343,6 +348,17 @@ function render(){
   el('rpAvg').textContent = tQty ? money(tRev/tQty) : '–';
   el('rpAvgSub').textContent = days.size ? 'TB ngày ' + moneyShort(tRev/days.size) + '₫' : '';
 
+  // Tiền vào bằng đường nào — để cuối ngày đếm được két và đối chiếu sao kê.
+  // `payMethod` vốn đã nằm trong hóa đơn từ lâu, chỉ là chưa ai cộng nó lại.
+  const tra = congTheoCachTra(rows);
+  const roRang = ['tienmat', 'chuyenkhoan', 'khac'].filter(k => tra[k] > 0);
+  el('rpTraCard').classList.toggle('hide', !roRang.length);
+  el('rpTra').innerHTML = roRang.map(k =>
+    `<span>${CACH_TRA[k].icon} ${CACH_TRA[k].nhan}</span><b>${money(tra[k])}</b>`).join('');
+  el('rpTraSub').textContent = tra.chuaChot
+    ? `Chưa tính ${money(tra.chuaChot)} của món chưa chốt hóa đơn`
+    : (roRang.length > 1 ? 'Cộng lại đúng bằng doanh thu ở trên' : '');
+
   el('rpDiscCard').classList.toggle('hide', !so.giam);
   el('rpDisc').textContent = '−' + money(so.giam);
   el('rpDiscSub').textContent = so.giam
@@ -434,13 +450,13 @@ function render(){
     : `<div class="empty" style="padding:24px 10px"><div class="ic">✅</div>
         <p>Không có món nào bị hủy trong kỳ này</p></div>`;
 
-  last = { list, tQty, tRev, from, to, cxList, cxL, so };
+  last = { list, tQty, tRev, from, to, cxList, cxL, so, tra };
 }
 
 /* ─────────────────── xuất CSV ─────────────────── */
 function csv(){
   if (!last || !last.list.length) return toast('Không có dữ liệu để xuất','err');
-  const { list, tQty, tRev, from, to, cxList, cxL, so } = last;
+  const { list, tQty, tRev, from, to, cxList, cxL, so, tra } = last;
   const q = s => '"' + String(s).replace(/"/g,'""') + '"';
   // Ba cột tiền chứ không một: kế toán cần thấy giảm giá tách ra, không phải
   // một con số đã trừ rồi mà không giải thích được vì sao lệch với bảng giá.
@@ -450,6 +466,11 @@ function csv(){
     ['Giam gia (VND)', Math.round(so.giam)].join(','),
     ['Doanh thu thuc thu (VND)', Math.round(so.thuc)].join(','),
     ...(so.chuaChot ? [['Chua chot hoa don (VND)', Math.round(so.chuaChot)].join(',')] : []),
+    '',
+    ['TIEN VAO BANG DUONG NAO'].join(','),
+    ['Tien mat (VND)', Math.round(tra.tienmat)].join(','),
+    ['Chuyen khoan (VND)', Math.round(tra.chuyenkhoan)].join(','),
+    ...(tra.khac ? [['Khong ro (VND)', Math.round(tra.khac)].join(',')] : []),
     '',
     ['Hang','Ten mon','So luong (ly)','Don gia niem yet (VND)','Don gia thuc thu (VND)',
      'Niem yet (VND)','Giam gia (VND)','Thuc thu (VND)','Ty trong DT (%)'].join(','),

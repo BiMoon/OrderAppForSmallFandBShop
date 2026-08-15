@@ -318,6 +318,9 @@ input:focus,select:focus,textarea:focus{
 .toast.show{opacity:1;transform:none}
 .toast.err{background:var(--late)}
 .toast.ok{background:var(--ok)}
+/* mạng chậm: đã ghi nhận nhưng chưa lên máy chủ — không phải lỗi, cũng
+   không phải xong. Màu riêng để người đứng quầy phân biệt được. */
+.toast.warn{background:var(--warn)}
 
 /* ════════════════════════════════════════
    SHEET

@@ -196,3 +196,75 @@ test('congSo đếm số dòng được giảm, không đếm dòng chưa chốt
   assert.equal(s.soDongGiam, 1);
   assert.equal(s.chuaChot, 50000);
 });
+
+/* ══════════════ tiền vào bằng đường nào ══════════════
+
+   `payMethod` nằm trong hóa đơn từ lâu mà màn Thống kê chưa từng đọc tới, nên
+   cuối ngày không ai biết két phải có bao nhiêu.                            */
+
+import { congTheoCachTra, chuanHoaCach, CACH_TRA } from '../app/js/thucThu.js';
+
+const hdCach = (tbl, den, cach, o = {}) =>
+  ({ table: tbl, status: 'paid', tinhToiLuc: den, code: `Q${den}`, payMethod: cach,
+     subtotal: 100000, total: 100000, ...o });
+const dg = (tbl, moc, tien) => ({ table: tbl, moc, revenue: tien, qty: 1 });
+
+test('cộng riêng tiền mặt và chuyển khoản', () => {
+  const bills = [hdCach(1, 1000, 'tienmat'), hdCach(2, 1000, 'chuyenkhoan')];
+  const rows = ganThucThu([dg(1, 900, 30000), dg(2, 900, 50000)], bills);
+  const t = congTheoCachTra(rows);
+  assert.equal(t.tienmat, 30000);
+  assert.equal(t.chuyenkhoan, 50000);
+  assert.equal(t.tong, 80000);
+});
+
+test('giảm giá của hóa đơn nào thì trừ vào đúng rổ của hóa đơn đó', () => {
+  const bills = [hdCach(1, 1000, 'tienmat', { subtotal: 100000, total: 50000 })];
+  const rows = ganThucThu([dg(1, 900, 100000)], bills);
+  const t = congTheoCachTra(rows);
+  assert.equal(t.tienmat, 50000, 'phải là tiền thật vào két, không phải giá niêm yết');
+  assert.equal(t.chuyenkhoan, 0);
+});
+
+test('món chưa chốt hóa đơn KHÔNG rơi vào rổ nào', () => {
+  const t = congTheoCachTra(ganThucThu([dg(1, 900, 40000)], []));
+  assert.equal(t.tong, 0);
+  assert.equal(t.tienmat, 0);
+  assert.equal(t.chuaChot, 40000,
+    'đếm tiền chưa vào két là cuối ngày đi tìm một khoản không tồn tại');
+});
+
+test('hóa đơn cũ thiếu payMethod vào rổ "không rõ", KHÔNG dồn vào tiền mặt', () => {
+  const bills = [{ table: 1, status: 'paid', tinhToiLuc: 1000, code: 'Q1', subtotal: 1, total: 1 }];
+  const t = congTheoCachTra(ganThucThu([dg(1, 900, 20000)], bills));
+  assert.equal(t.tienmat, 0, 'dồn bừa vào tiền mặt là người đếm két bị nghi oan');
+  assert.equal(t.khac, 20000);
+  assert.equal(t.tong, 20000);
+});
+
+test('nhận mọi cách viết của cùng một hình thức', () => {
+  for (const v of ['tienmat', 'TIEN MAT', 'tien_mat', 'cash']) {
+    assert.equal(chuanHoaCach(v), 'tienmat', v);
+  }
+  for (const v of ['chuyenkhoan', 'CHUYEN-KHOAN', 'sepay', 'bank', 'ck']) {
+    assert.equal(chuanHoaCach(v), 'chuyenkhoan', v);
+  }
+  for (const v of [null, undefined, '', 'momo', 123]) {
+    assert.equal(chuanHoaCach(v), 'khac', String(v));
+  }
+});
+
+test('mọi rổ đều có nhãn để hiện lên màn hình', () => {
+  for (const k of ['tienmat', 'chuyenkhoan', 'khac']) {
+    assert.ok(CACH_TRA[k]?.nhan, k);
+  }
+});
+
+test('tổng ba rổ đúng bằng thực thu của phần đã chốt', () => {
+  const bills = [hdCach(1, 1000, 'tienmat', { subtotal: 100000, total: 80000 }),
+                 hdCach(2, 1000, 'sepay')];
+  const rows = ganThucThu([dg(1, 900, 100000), dg(2, 900, 60000)], bills);
+  const t = congTheoCachTra(rows);
+  assert.equal(t.tienmat + t.chuyenkhoan + t.khac, t.tong);
+  assert.equal(t.tong, congSo(rows).thuc);
+});

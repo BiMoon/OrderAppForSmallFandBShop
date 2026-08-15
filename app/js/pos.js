@@ -17,6 +17,8 @@ import { KHO } from './escpos.js';
 import { xemTem, ghiTem, quaTang, chuanHoaSdt, cauHinhTem, luuCauHinhTem, temBatChua } from './tem.js';
 import { TUY_CHON_NHANH, themVaoGio, suaMoTa, moTaMon } from './gioHang.js';
 import { inNhan, cauHinhNhan, luuCauHinhNhan } from './inNhan.js';
+import { choMayChu, loiBao } from './hangCho.js';
+import { goiYTien, tienThoi, chiaTo } from './tienMat.js';
 
 let table    = store.get('pos.table', 1);
 let tab      = 'pad';          // pad | menu
@@ -660,9 +662,15 @@ function send(){
   if (!cart.length) return;
   const b = el('posSend'); b.disabled = true; b.textContent = '⏳ Đang gửi…';
   const batch = cart.slice();
-  sendOrders(batch).then(() => {
+  // Không chờ máy chủ xác nhận quá 3 giây: dữ liệu đã nằm trong hàng đợi của
+  // Firebase rồi. Chờ mãi thì nút kẹt, thu ngân bấm lại, và khi mạng về là hai
+  // đơn cùng rơi xuống quầy pha. Xem hangCho.js.
+  choMayChu(sendOrders(batch)).then((kq) => {
     cart = []; cartTab = 'all'; saveCart(); renderAll();
-    toast(`Đã gửi ${batch.length} món xuống quầy`, 'ok');
+    const { msg, kind } = loiBao(kq,
+      `Đã gửi ${batch.length} món xuống quầy`,
+      `Mạng chậm — ${batch.length} món đang xếp hàng, tự gửi khi có mạng lại`);
+    toast(msg, kind);
     setView('pending');
   }).catch(err => {
     console.error(err); renderAll();
@@ -1048,6 +1056,26 @@ function newBillSheet(){
 const AI_CHOT = { sepay: 'SePay tự nhận', nguoi: 'thu ngân xác nhận' };
 const CACH_TRA = { chuyenkhoan: 'Chuyển khoản', tienmat: 'Tiền mặt' };
 
+/**
+ * Dòng "ai làm" dưới mỗi hóa đơn.
+ *
+ * Chỉ hiện khi có gì đáng nhìn: hóa đơn CÓ GIẢM GIÁ, hoặc đã bị mở lại. Dán
+ * tên người vào mọi tấm thẻ thì nó thành nhiễu và không ai đọc nữa — mà thứ
+ * cần nhìn thì đúng là hai cái đó: giảm giá và mở lại sổ.
+ *
+ * Chỉ lấy phần trước @ cho gọn; ai cần đủ thì đã có trong dữ liệu.
+ */
+const tenNgan = (mail) => mail ? String(mail).split('@')[0] : null;
+
+function nguoiLam(b){
+  const phan = [];
+  if (b.discount && tenNgan(b.taoBoi)) phan.push(`giảm ${b.discount}% bởi ${esc(tenNgan(b.taoBoi))}`);
+  if (tenNgan(b.moLaiBoi)) phan.push(`đã mở lại bởi ${esc(tenNgan(b.moLaiBoi))}`);
+  return phan.length
+    ? `<div class="bill-note" style="color:var(--ink-3);font-size:12px">${phan.join(' · ')}</div>`
+    : '';
+}
+
 function renderBillList(){
   const box = el('posBillList'); if (!box) return;
   const bills = [...data.bills].sort((a,b) => (b.createdAt||0)-(a.createdAt||0));
@@ -1087,12 +1115,16 @@ function renderBillList(){
         <div class="bill-foot-row"><span>Tạm tính</span><span>${money(b.subtotal)}</span></div>
         ${b.discount ? `<div class="bill-foot-row discount"><span>Giảm ${b.discount}%</span><span>-${money(b.discAmt)}</span></div>` : ''}
         <div class="bill-foot-row total"><span>Tổng cộng</span><span>${money(b.total)}</span></div>
+        ${paid && Number(b.tienThoi) > 0
+          ? `<div class="bill-foot-row"><span>Khách đưa ${money(b.khachDua)}</span><span>thối ${money(b.tienThoi)}</span></div>`
+          : ''}
         ${paid
           ? `<div class="bill-note ok">${CACH_TRA[b.payMethod] || 'Đã thu'} · ${AI_CHOT[b.paidBy] || 'đã chốt'}${
                b.overpaid ? ` · <b>khách chuyển thừa ${money(b.overpaidAmount)}</b>` : ''}</div>`
           : daTra > 0
             ? `<div class="bill-note warn">Đã nhận ${money(daTra)} — <b>còn thiếu ${money(thieu)}</b></div>`
             : ''}
+        ${nguoiLam(b)}
       </div>
       ${!paid ? (qrUrl
         ? `<div class="bill-qr">
@@ -1364,18 +1396,70 @@ function ghiTemChoHoaDon(b){
 function traTienSheet(code, cach){
   const b = data.bills.find(x => x.code === code);
   if (!b) return;
+  const tong = Number(b.total) || 0;
+  const tienMat = cach === 'tienmat';
+
   sheet({
-    title: cach === 'tienmat' ? 'Nhận tiền mặt?' : 'Xác nhận đã chuyển khoản?',
-    desc: `Bàn ${b.table} · ${money(b.total)}${
-      cach === 'chuyenkhoan' ? ' — chỉ bấm khi đã thấy tiền trong app ngân hàng.' : ''}`,
+    title: tienMat ? 'Nhận tiền mặt?' : 'Xác nhận đã chuyển khoản?',
+    desc: `Bàn ${b.table} · ${money(tong)}${
+      tienMat ? '' : ' — chỉ bấm khi đã thấy tiền trong app ngân hàng.'}`,
+    // Ô "khách đưa" chỉ có nghĩa với tiền mặt. Chuyển khoản thì số tiền đã
+    // nằm sẵn trong sao kê, gõ lại chỉ tổ sai.
+    body: tienMat ? `
+      <div class="sec-label" style="margin-top:0">Khách đưa</div>
+      <div class="row" id="ttGoiY" style="flex-wrap:wrap;gap:6px;margin-bottom:8px">
+        ${goiYTien(tong).map(v =>
+          `<button class="btn btn-nho" data-tien="${v}">${money(v)}</button>`).join('')}
+      </div>
+      <input type="tel" id="ttDua" inputmode="numeric" autocomplete="off"
+             placeholder="Bỏ trống = khách đưa đúng ${money(tong)}">
+      <div id="ttThoi" class="hide" style="margin-top:10px;padding:12px;border-radius:12px;
+           background:var(--ok-soft,rgba(16,122,87,.12))">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
+          <span style="color:var(--ink-2)">Thối lại</span>
+          <b id="ttThoiSo" style="font-size:26px;font-variant-numeric:tabular-nums"></b>
+        </div>
+        <div id="ttThoiTo" style="color:var(--ink-3);font-size:12.5px;margin-top:4px"></div>
+      </div>` : '',
     actions:[
       { label: 'Chưa' },
       { label: 'Xác nhận', cls: 'solid', onClick(){
-          traTay(code, cach).then(() => toast('Đã ghi nhận thanh toán', 'ok')).catch(fail);
+          const dua = tienMat ? soTuO('ttDua') : 0;
+          traTay(code, cach, dua || tong)
+            .then(() => {
+              const { thoi } = tienThoi(dua || tong, tong);
+              toast(thoi ? `Đã ghi nhận · thối ${money(thoi)}` : 'Đã ghi nhận thanh toán', 'ok');
+            })
+            .catch(fail);
         }
       }
     ]
   });
+
+  if (!tienMat) return;
+  setTimeout(() => {
+    const o = el('ttDua'); if (!o) return;
+    const ve = () => {
+      const { thoi, du } = tienThoi(soTuO('ttDua'), tong);
+      const co = soTuO('ttDua') > 0 && du && thoi > 0;
+      el('ttThoi').classList.toggle('hide', !co);
+      if (!co) return;
+      el('ttThoiSo').textContent = money(thoi);
+      // Đếm sẵn ra mấy tờ mấy đồng — thu ngân bốc khỏi két, không phải nhẩm.
+      el('ttThoiTo').textContent = chiaTo(thoi)
+        .map(({ menh, so }) => `${so}×${money(menh)}`).join('  +  ');
+    };
+    o.oninput = ve;
+    el('ttGoiY').onclick = (e) => {
+      const n = e.target.closest('[data-tien]'); if (!n) return;
+      o.value = n.dataset.tien; ve(); o.focus();
+    };
+  }, 50);
+}
+
+/** Số nguyên từ một ô nhập, bỏ mọi dấu chấm phẩy người dùng gõ cho dễ đọc. */
+function soTuO(id){
+  return Math.max(0, Math.round(Number(String(el(id)?.value ?? '').replace(/[^\d]/g, '')) || 0));
 }
 
 function deleteBillSheet(code){
