@@ -4,7 +4,7 @@
   "type": "module",
   "description": "App trong quán — POS, quầy pha chế, sơ chế, thống kê",
   "scripts": {
-    "test": "TZ=Asia/Ho_Chi_Minh node --test \"test/*.test.mjs\"",
+    "test": "node tools/chay-test.mjs",
     "kiem:thanhtoan": "node test/kiem-man-thanh-toan.mjs",
     "kiem:thongke": "node test/kiem-man-thong-ke.mjs",
     "kiem:in": "node test/kiem-in-hoa-don.mjs",
@@ -15,6 +15,10 @@
   },
   "devDependencies": {
     "jsqr": "^1.4.0",
-    "playwright": "^1.48.0"
+    "playwright": "^1.48.0",
+    "qrcode": "^1.5.4"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
   }
 }
