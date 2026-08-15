@@ -15,12 +15,33 @@
   --line:#e4e8ef;
   --line-strong:#cdd3dc;
 
-  /* Text */
+  /* Text
+     `--ink-3` là chữ MỜ, không phải chữ tắt: nó đang tô nhãn thanh dưới, nút
+     dải phân đoạn, chú thích. Đo ra 2.85:1 trên nền `--surface-2` — dưới ngưỡng
+     WCAG AA (4.5:1) và thật sự khó đọc dưới đèn vàng, tay ướt, ở quầy pha chế.
+     Đậm lên còn 5.4:1. Muốn thứ gì đó nhạt hơn nữa cho trang trí thì thêm token
+     mới, đừng hạ cái này xuống. */
   --ink:#0f1923;
   --ink-2:#4a5568;
-  --ink-3:#8896a8;
+  --ink-3:#5b6878;
+
+  /* Màu chữ nằm TRÊN nền `--ink`. Trước đây mọi chỗ viết cứng `#fff`, mà ở chế
+     độ tối `--ink` lật thành gần trắng — nút "Lưu", "Tiền mặt", "Tạo hóa đơn"
+     ra chữ trắng trên nền trắng, đo được 1.18:1. Token này lật theo. */
+  --on-ink:#ffffff;
+
+  /* Đỏ dùng làm CHỮ. `--late` vẫn giữ nguyên cho vai trò làm NỀN (chấm báo số,
+     nền cảnh báo) — hạ độ đậm của nó là chữ trắng trên nền đỏ hỏng theo. */
+  --late-ink:#dc2626;
+  /* Teal đủ đậm để làm chữ trên nền sáng; `--brand` chỉ 3.74:1. */
+  --brand-ink:#0f766e;
 
   /* Brand — teal */
+  /* Nền teal ĐẶC dùng cho nút chính và thẻ bàn đang chọn. Dải cũ
+     (--brand → --brand-2) chỉ cho chữ trắng 3.03:1; dải này ≥5.47:1 ở mọi điểm
+     dọc theo nó. Teal nhạt vẫn giữ nguyên cho viền, chấm trạng thái, nền mờ —
+     những chỗ không có chữ trắng nằm trên. */
+  --brand-nen:linear-gradient(135deg,#115e59,#0f766e);
   --brand:#0d9488;
   --brand-dark:#0f766e;
   --brand-soft:#e6f4f2;
@@ -62,7 +83,10 @@
     --line-strong:#3a4455;
     --ink:#e6edf3;
     --ink-2:#8b949e;
-    --ink-3:#484f58;
+    --ink-3:#848d97;          /* #484f58 cũ chỉ được 2.09:1 trên nền tối */
+    --on-ink:#0d1117;         /* nền `--ink` giờ gần trắng -> chữ phải là màu nền */
+    --late-ink:#f87171;
+    --brand-ink:#2dd4bf;
     --brand-soft:rgba(13,148,136,.18);
     --ok-soft:rgba(22,163,74,.15);
     --warn-soft:rgba(180,83,9,.15);
@@ -157,7 +181,7 @@ main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior
   position:relative;transition:color .2s;letter-spacing:.01em;
 }
 .tabbar button .ic{font-size:22px;line-height:1;transition:transform .2s}
-.tabbar button.active{color:var(--brand)}
+.tabbar button.active{color:var(--brand-ink)}
 .tabbar button.active .ic{transform:scale(1.12)}
 .tabbar button.active::before{
   content:'';position:absolute;
@@ -212,11 +236,11 @@ main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior
 .btn:active{transform:scale(.97)}
 .btn.block{width:100%}
 .btn.solid{
-  background:var(--ink);border-color:var(--ink);color:#fff;
+  background:var(--ink);border-color:var(--ink);color:var(--on-ink);
   box-shadow:0 2px 8px rgba(15,25,35,.2);
 }
 .btn.solid:active{background:var(--brand);border-color:var(--brand);box-shadow:var(--shadow-brand)}
-.btn.danger{color:var(--late);border-color:rgba(220,38,38,.25)}
+.btn.danger{color:var(--late-ink);border-color:rgba(220,38,38,.25)}
 .btn.danger:active{background:var(--late-soft)}
 .btn.solid.danger{background:var(--late);border-color:var(--late);color:#fff;box-shadow:0 2px 8px rgba(220,38,38,.25)}
 .btn.sm{min-height:36px;padding:0 12px;font-size:13px;border-radius:10px}
@@ -254,7 +278,7 @@ main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior
   font-size:13px;font-weight:600;color:var(--ink-2);
   transition:background .15s,color .15s;
 }
-.chip.active{background:var(--ink);border-color:var(--ink);color:#fff}
+.chip.active{background:var(--ink);border-color:var(--ink);color:var(--on-ink)}
 .chip .c{
   font-size:10px;padding:1px 6px;border-radius:99px;
   background:var(--bg);color:var(--ink-2);font-variant-numeric:tabular-nums;
@@ -307,7 +331,7 @@ input:focus,select:focus,textarea:focus{
   position:fixed;left:14px;right:14px;
   bottom:calc(var(--nav-h) + var(--safe-b) + 12px);
   z-index:200;
-  background:var(--ink);color:#fff;
+  background:var(--ink);color:var(--on-ink);
   padding:14px 18px;border-radius:14px;
   font-size:14px;font-weight:600;text-align:center;
   box-shadow:var(--shadow-3);
@@ -431,7 +455,7 @@ input:focus,select:focus,textarea:focus{
   top:calc(var(--safe-t) + 66px);z-index:120;
   display:none;align-items:center;gap:11px;
   padding:12px 15px;border-radius:14px;
-  background:var(--ink);color:#fff;
+  background:var(--ink);color:var(--on-ink);
   box-shadow:var(--shadow-3);font-size:13.5px;font-weight:600;
 }
 .updbar.show{display:flex}

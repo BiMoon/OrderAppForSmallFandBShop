@@ -154,10 +154,10 @@ const CSS = `
   transition:transform .1s,background .12s,box-shadow .12s;
 }
 .key:active{transform:scale(.94);background:var(--brand-soft);box-shadow:none}
-.key.del{color:var(--late);font-size:22px}
+.key.del{color:var(--late-ink);font-size:22px}
 .key.add{
   grid-column:span 3;height:58px;
-  background:linear-gradient(135deg,var(--brand),var(--brand-2));
+  background:var(--brand-nen);
   border:none;color:#fff;
   font-size:16px;font-weight:700;letter-spacing:.01em;
   box-shadow:var(--shadow-brand);
@@ -254,11 +254,13 @@ const CSS = `
 .tbtn b{font-size:18px;font-weight:800;color:var(--ink);line-height:1}
 .tbtn s{font-size:9px;text-decoration:none;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em}
 .tbtn.active{
-  background:linear-gradient(135deg,var(--brand),var(--brand-2));
+  background:var(--brand-nen);
   border-color:transparent;box-shadow:var(--shadow-brand);
 }
 .tbtn.active b{color:#fff}
-.tbtn.active s{color:rgba(255,255,255,.7)}
+/* Dòng phụ mờ 70% chỉ được 3.54:1 trên nền teal — nhìn thì "mờ cho dịu" nhưng
+   đọc thì không ra. 88% giữ được vẻ phụ mà vẫn qua ngưỡng. */
+.tbtn.active s{color:rgba(255,255,255,.88)}
 .tbtn.has-cancel{border-color:var(--late);box-shadow:0 0 0 3px var(--late-soft)}
 .tbtn .bg{
   position:absolute;min-width:19px;height:19px;padding:0 5px;border-radius:99px;
@@ -280,7 +282,7 @@ const CSS = `
 .tbtn[data-tt="daTra"]      .tstate{background:var(--ok)}
 .tbtn[data-tt="choTra"]{border-color:var(--amber);background:var(--amber-soft)}
 .tbtn[data-tt="daTra"]{background:var(--ok-soft)}
-.tbtn.active[data-tt]{background:linear-gradient(135deg,var(--brand),var(--brand-2))}
+.tbtn.active[data-tt]{background:var(--brand-nen)}
 .tbtn.active .tstate{box-shadow:0 0 0 1.5px rgba(255,255,255,.6)}
 
 /* Dòng ghi chú dưới chân hóa đơn */
