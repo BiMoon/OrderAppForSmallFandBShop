@@ -82,8 +82,25 @@ export function boCucHoaDon(b, o = {}){
   const kh = [];
   const daTra = b?.status === 'paid';
 
+  // Hai khối, cố ý tách vai trò:
+  //
+  //   GHÉ CẬU HAI            <- thương hiệu, cỡ gấp đôi. Thứ khách nhớ.
+  //   Góc nhỏ món ngon
+  //
+  //   Hộ Kinh Doanh Cậu Hai Long   <- pháp nhân, cỡ thường
+  //   371/3 Trường Chinh, ...      <- địa chỉ, đi liền pháp nhân
+  //
+  // Khối dưới là khối người của cơ quan thuế đọc: bán hàng là ai, ở đâu. Để
+  // liền nhau thì đọc ra ngay; rải mỗi thứ một nơi thì phải đi tìm. Một dòng
+  // trắng ngăn giữa hai khối đủ để mắt hiểu đây là hai chuyện khác nhau, mà
+  // không cần kẻ thêm vạch nào.
   kh.push(chu(o.tenQuan || QUAN.ten, { co: 2, dam: true, can: 'giua' }));
   kh.push(chu(QUAN.slogan, { can: 'giua' }));
+  kh.push(hong(11));
+  if (QUAN.phapNhan) {
+    for (const d of ngatDong(QUAN.phapNhan, cot)) kh.push(chu(d, { can: 'giua' }));
+  }
+  if (QUAN.maSoThue) kh.push(chu('MST: ' + QUAN.maSoThue, { can: 'giua' }));
   for (const d of ngatDong(o.diaChi || QUAN.diaChi, cot)) kh.push(chu(d, { can: 'giua' }));
   // Số điện thoại nằm ở CHÂN hoá đơn cùng với Zalo và wifi, không lặp lại ở
   // đây. Hai lần cùng một số trên một tờ giấy là hai dòng giấy vứt đi — trừ khi

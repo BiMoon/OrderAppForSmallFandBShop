@@ -15,8 +15,23 @@
    ========================================================================== */
 
 export const QUAN = {
+  // Tên khách nhớ. In cỡ gấp đôi, đứng một mình trên đầu tờ giấy.
   ten: 'GHÉ CẬU HAI',
   slogan: 'Góc nhỏ món ngon',
+
+  /* ── Pháp nhân ────────────────────────────────────────────────────────────
+     Tên đăng ký kinh doanh, KHÁC tên thương hiệu. In nhỏ, nằm cùng khối với
+     địa chỉ — đó là khối mà người của cơ quan thuế đọc: bán hàng là ai, ở đâu.
+     Thiếu nó thì tờ giấy có số tiền mà không có người bán.
+
+     Cố ý KHÔNG viết tắt thành "HKD": chỗ này để tránh phiền hà, mà viết tắt
+     thì lại phải giải thích. 26 ký tự, vừa cả khổ 58mm (32 cột). */
+  phapNhan: 'Hộ Kinh Doanh Cậu Hai Long',
+
+  /* Mã số thuế. ĐỂ TRỐNG cho tới khi có số thật — in một mã số sai còn tệ hơn
+     hẳn không in gì, vì nó biến một thiếu sót thành một lời khai không đúng.
+     Điền vào đây là tự khắc hiện trên phiếu, không phải sửa chỗ nào khác. */
+  maSoThue: '',
 
   diaChi: '371/3 Trường Chinh, P. Tân Bình, TP.HCM',
 

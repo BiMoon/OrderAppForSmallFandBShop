@@ -408,3 +408,59 @@ test('KHÔNG gọi tờ giấy này là "hoá đơn"', () => {
       'chưa phát hành hoá đơn điện tử thì đây không phải hoá đơn theo nghĩa của cơ quan thuế');
   }
 });
+
+/* ══════════════════ pháp nhân trên phiếu ══════════════════
+
+   Tờ giấy có số tiền mà không nói ai bán là chỗ dễ bị hỏi. Tên đăng ký kinh
+   doanh khác tên thương hiệu, và phải có cả hai: một cái để khách nhớ, một cái
+   để cơ quan thuế đọc.                                                      */
+
+test('phiếu có TÊN ĐĂNG KÝ KINH DOANH, không chỉ tên thương hiệu', () => {
+  for (const b of [HD, daTra()]) {
+    const het = chuCua(boCucHoaDon(b, {})).join(' ');
+    assert.ok(het.includes(QUAN.ten), 'thiếu thương hiệu');
+    assert.ok(het.includes(QUAN.phapNhan), 'thiếu pháp nhân — tờ giấy không nói ai bán');
+  }
+});
+
+test('thương hiệu vẫn là chữ TO NHẤT trên tờ giấy', () => {
+  const kh = boCucHoaDon(daTra(), {});
+  const hieu = kh.find((k) => k.chu === QUAN.ten);
+  const phap = kh.find((k) => k.chu === QUAN.phapNhan);
+  assert.equal(hieu.co, 2);
+  assert.ok(!phap.co || phap.co === 1,
+    'pháp nhân mà to bằng thương hiệu thì khách nhớ nhầm tên quán');
+  const toHon = kh.filter((k) => k.kieu === 'chu' && (k.co || 1) > 1 && k.chu !== QUAN.ten);
+  assert.equal(toHon.length, 1);
+  assert.ok(toHon[0].chu.startsWith('TỔNG CỘNG'),
+    'chỉ TỔNG CỘNG được to ngang thương hiệu, thấy: ' + toHon[0].chu);
+});
+
+test('thương hiệu đứng TRƯỚC pháp nhân', () => {
+  const chu = chuCua(boCucHoaDon(daTra(), {}));
+  assert.ok(chu.indexOf(QUAN.ten) < chu.indexOf(QUAN.phapNhan));
+});
+
+test('pháp nhân đi LIỀN địa chỉ — đó là khối người ta đọc để biết ai bán ở đâu', () => {
+  const chu = chuCua(boCucHoaDon(daTra(), {}));
+  const iPhap = chu.indexOf(QUAN.phapNhan);
+  const iDiaChi = chu.findIndex((c) => c.includes('Trường Chinh'));
+  assert.ok(iDiaChi > iPhap && iDiaChi - iPhap <= 2,
+    `pháp nhân ở dòng ${iPhap}, địa chỉ ở dòng ${iDiaChi} — rải xa nhau thì phải đi tìm`);
+});
+
+test('chưa có mã số thuế thì KHÔNG in dòng MST rỗng', () => {
+  const het = chuCua(boCucHoaDon(daTra(), {})).join(' ');
+  assert.equal(/MST/.test(het), QUAN.maSoThue ? true : false,
+    'in "MST:" trống là tệ hơn không in — nhìn như quên điền');
+});
+
+test('pháp nhân không tràn khổ giấy hẹp nhất', () => {
+  for (const kho of ['58', '80']) {
+    for (const d of ngatDong(QUAN.phapNhan, SO_COT[kho])) {
+      assert.ok(d.length <= SO_COT[kho], `khổ ${kho}: "${d}"`);
+    }
+  }
+  assert.equal(ngatDong(QUAN.phapNhan, SO_COT['58']).length, 1,
+    'gãy hai dòng ở khổ 58mm thì đầu phiếu trông lộn xộn — rút gọn tên lại');
+});
