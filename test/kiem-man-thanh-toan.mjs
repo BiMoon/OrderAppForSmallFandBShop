@@ -378,6 +378,13 @@ console.log('\nMàn thanh toán trong quán\n');
       'phiếu pha chế hiện câu khách dặn');
   await page.screenshot({ path: 'test/anh-phieu-ghi-chu.png' });
 
+  // Nút in nhãn chỉ hiện khi đã bật trong cài đặt máy này.
+  await page.locator('#tabbar button[data-go="pos"]').click();
+  await page.locator('#posView button[data-v="pending"]').click();
+  await page.waitForSelector('.pcard', { timeout: 5000 });
+  bao(await page.locator('.pcard [data-a="nhan"]').count() === 0,
+      'chưa bật in nhãn thì màn Chờ pha gọn như cũ');
+
   bao(!loi.length, `không có lỗi JS${loi.length ? ': ' + loi[0] : ''}`);
   await ctx.close();
 }

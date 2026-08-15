@@ -16,6 +16,7 @@ import { inHoaDon, cauHinhIn, luuCauHinhIn, CACH_GUI } from './inHoaDon.js';
 import { KHO } from './escpos.js';
 import { xemTem, ghiTem, quaTang, chuanHoaSdt, cauHinhTem, luuCauHinhTem, temBatChua } from './tem.js';
 import { TUY_CHON_NHANH, themVaoGio, suaMoTa, moTaMon } from './gioHang.js';
+import { inNhan, cauHinhNhan, luuCauHinhNhan } from './inNhan.js';
 
 let table    = store.get('pos.table', 1);
 let tab      = 'pad';          // pad | menu
@@ -477,6 +478,7 @@ function bind(){
     saveCart(); renderAll();
   };
   el('posCartFoot').onclick = e => {
+    if (e.target.closest('#posNhan')) return inNhanGio();
     if (e.target.closest('#posSend')) return send();
     if (e.target.closest('#posClear')) return clearSheet();
   };
@@ -489,6 +491,17 @@ function bind(){
     const b = e.target.closest('[data-a]'); if (!b) return;
     const key = b.dataset.k;
     if (b.dataset.a === 'req')  return cancelSheet(key);
+    if (b.dataset.a === 'nhan'){
+      const o = data.orders.find(x => x.key === key);
+      if (!o) return;
+      // Nhãn rách, in lệch, hay dán nhầm ly — in lại đúng món đó, có đóng dấu.
+      return inNhan({
+        ma: 'Bàn ' + (o.table ?? '—'), kieu: 'Tại quán',
+        items: [{ name: o.item, qty: o.quantity, tuyChon: o.tuyChon, ghiChu: o.ghiChu }],
+      }, { inLai: true })
+        .then(kq => toast(`Đã gửi lại ${kq.soNhan} nhãn`, 'ok'))
+        .catch(e => { console.error(e); toast(e.message || 'Không in được nhãn', 'err'); });
+    }
     if (b.dataset.a === 'undo') return clearCancel(key)
       .then(()=>toast('Da thu hoi yeu cau huy','ok')).catch(fail);
     if (b.dataset.a === 'ack')  return clearCancel(key).catch(fail);
@@ -639,6 +652,7 @@ function renderCart(){
       <div class="v">${money(tv)}</div>
     </div>
     <button class="btn solid block" id="posSend">📤 Gửi đơn xuống quầy <span class="n">${tq} ly</span></button>
+    ${cauHinhNhan().bat ? `<button class="btn block mt8" id="posNhan">🏷 In nhãn dán ly <span class="n">${tq} nhãn</span></button>` : ''}
     <button class="btn danger block mt8" id="posClear">🗑 Xóa toàn bộ giỏ</button>` : '';
 }
 
@@ -673,6 +687,30 @@ function clearSheet(){
  * không nhập một chuỗi: sau này còn đếm được "bao nhiêu ly ít đường", và nhãn
  * dán ly in chúng khác cỡ chữ.
  */
+/**
+ * In nhãn cho cả giỏ đang mở.
+ *
+ * In TRƯỚC khi gửi đơn xuống quầy: người pha dán nhãn lên ly rỗng rồi mới pha,
+ * đúng thứ tự thao tác thật. In sau khi gửi thì ly đã pha xong rồi mới có nhãn.
+ */
+async function inNhanGio(){
+  if (!cart.length) return toast('Giỏ đang trống', 'err');
+  const b = el('posNhan');
+  if (b){ b.disabled = true; b.textContent = '🏷 Đang in…'; }
+  try {
+    const kq = await inNhan({
+      ma: 'Bàn ' + table, kieu: 'Tại quán',
+      items: cart.map(o => ({ name: o.name, qty: o.qty, tuyChon: o.tuyChon, ghiChu: o.ghiChu })),
+    });
+    toast(`Đã gửi ${kq.soNhan} nhãn tới máy in`, 'ok');
+  } catch (e) {
+    console.error(e);
+    toast(e.message || 'Không in được nhãn', 'err');
+  } finally {
+    renderCart();
+  }
+}
+
 function ghiChuSheet(o){
   let chon = new Set((o.tuyChon || '').split(',').map(x => x.trim()).filter(Boolean));
 
@@ -764,7 +802,8 @@ function renderPending(){
       acts = `<button class="btn" data-a="ack" data-k="${o.key}">Đã hiểu</button>
               <button class="btn danger" data-a="req" data-k="${o.key}">Yêu cầu lại</button>`;
     } else {
-      acts = `<button class="btn danger" data-a="req" data-k="${o.key}">✕ Yêu cầu hủy</button>`;
+      acts = `${cauHinhNhan().bat ? `<button class="btn" data-a="nhan" data-k="${o.key}">🏷 In lại nhãn</button>` : ''}
+              <button class="btn danger" data-a="req" data-k="${o.key}">✕ Yêu cầu hủy</button>`;
     }
     return `<article class="${cls}" data-at="${o.at}">
       <div class="top">
@@ -1130,6 +1169,12 @@ function cauHinhInSheet(){
         Mã này chỉ cộng/trừ được tem — không đụng tới đơn hàng hay tiền.
       </p>
 
+      <label class="cong-tac" style="display:flex;gap:12px;align-items:flex-start;padding:12px 0;margin-top:14px;border-top:1px solid var(--line)">
+        <input type="checkbox" id="nhanBat" ${cauHinhNhan().bat ? 'checked' : ''} style="width:20px;height:20px;flex:none">
+        <span><b>Bật nút in nhãn dán ly</b>
+          <em style="display:block;color:var(--ink-3);font-size:12.5px;margin-top:3px">Một ly một nhãn, có tên món, tuỳ chọn và câu khách dặn. Dùng cuộn giấy decal trên chính máy in này.</em></span>
+      </label>
+
       <div class="sec-label" style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">Máy in hóa đơn</div>
       <p style="color:var(--ink-3);font-size:12.5px;line-height:1.5;margin:-4px 0 10px">
         Hóa đơn in dưới dạng ẢNH nên tiếng Việt có dấu đầy đủ. Máy in nhiệt rẻ hầu như không có
@@ -1185,6 +1230,7 @@ function cauHinhInSheet(){
 
 function luuTuForm(){
   luuCauHinhTem({ ma: el('temMa').value.trim() });
+  luuCauHinhNhan({ bat: el('nhanBat').checked });
   luuCauHinhIn({
     bat: el('inBat').checked,
     kho: el('inKho').value,

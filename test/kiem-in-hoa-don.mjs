@@ -221,6 +221,74 @@ console.log('\nIn hóa đơn ra máy in nhiệt\n');
   await ctx.close();
 }
 
+/* ── 4. nhãn dán ly ─────────────────────────────────────────────────────── */
+{
+  const { page, ctx, loi } = await mo();
+
+  const DON = {
+    ma: 'QCH2608150003', ten: 'Anh Long', sdt: '0901234567', kieu: 'Mang đi',
+    items: [
+      { name: 'Trà sữa socola bánh oreo vụn', qty: 2, tuyChon: 'Ít đá, Ít đường', ghiChu: 'lấy ống hút giấy, pha nhạt thôi' },
+      { name: 'Espresso', qty: 1 },
+    ],
+  };
+
+  for (const kho of ['58', '80']) {
+    const kq = await page.evaluate(async ({ don, kho }) => {
+      const { boCucNhan } = await import('./js/nhanBoCuc.js');
+      const { veMotNhan, lenhInNhan } = await import('./js/inNhan.js');
+      const ds = boCucNhan(don, { kho, luc: new Date('2026-08-15T09:05:00+07:00') });
+      const anh = ds.map((n) => veMotNhan(n, kho).canvas.toDataURL('image/png'));
+      const b = lenhInNhan(ds, kho);
+      const chu = ds.flat().filter((k) => k.kieu === 'chu').map((k) => k.chu).join(' ');
+      return { so: ds.length, anh, byte: b.length, coSoDay: chu.includes('0901234567'), chu };
+    }, { don: DON, kho });
+
+    bao(kq.so === 3, `khổ ${kho}mm: 3 ly ra 3 nhãn (thấy ${kq.so})`);
+    bao(!kq.coSoDay, `khổ ${kho}mm: KHÔNG in đủ số điện thoại lên ly`);
+    bao(kq.chu.includes('***567') && kq.chu.includes('Anh Long'), `khổ ${kho}mm: có tên + 3 số cuối`);
+    bao(kq.chu.includes('1/3') && kq.chu.includes('3/3'), `khổ ${kho}mm: đánh số ly trên cả đơn`);
+    console.log(`     lệnh in ${kq.so} nhãn khổ ${kho}mm: ${(kq.byte / 1024).toFixed(1)}KB thô`);
+
+    // Ghép ba nhãn thành một ảnh để nhìn một lượt.
+    const ten = `test/anh-nhan-${kho}.png`;
+    await page.evaluate(async ({ anh }) => {
+      const ims = await Promise.all(anh.map((d) => new Promise((r) => {
+        const i = new Image(); i.onload = () => r(i); i.src = d;
+      })));
+      const cv = document.createElement('canvas');
+      cv.width = ims[0].width;
+      cv.height = ims.reduce((s, i) => s + i.height + 12, 0);
+      const g = cv.getContext('2d');
+      g.fillStyle = '#bbb'; g.fillRect(0, 0, cv.width, cv.height);
+      let y = 0;
+      for (const i of ims) { g.drawImage(i, 0, y); y += i.height + 12; }
+      window.__ghep = cv.toDataURL('image/png');
+    }, { anh: kq.anh });
+    const png = await page.evaluate(() => window.__ghep);
+    await writeFile(ten, Buffer.from(png.split(',')[1], 'base64'));
+    console.log(`  ✓ ${ten}`);
+  }
+
+  /* chuỗi byte: MỘT lệnh, khởi tạo đúng một lần, cắt giấy sau từng nhãn */
+  const b = await page.evaluate(async ({ don }) => {
+    const { boCucNhan } = await import('./js/nhanBoCuc.js');
+    const { lenhInNhan } = await import('./js/inNhan.js');
+    return [...lenhInNhan(boCucNhan(don, { kho: '80' }), '80')];
+  }, { don: DON });
+
+  let soKhoiTao = 0, soCat = 0;
+  for (let i = 0; i < b.length - 3; i++) {
+    if (b[i] === 0x1b && b[i + 1] === 0x40) soKhoiTao++;
+    if (b[i] === 0x1d && b[i + 1] === 0x56 && b[i + 2] === 66) soCat++;
+  }
+  bao(soKhoiTao === 1, `khởi tạo ĐÚNG MỘT lần (thấy ${soKhoiTao}) — ESC @ giữa chừng là mất cấu hình`);
+  bao(soCat === 3, `cắt giấy sau từng nhãn để xé rời (thấy ${soCat})`);
+
+  bao(!loi.length, `không có lỗi JS${loi.length ? ': ' + loi[0] : ''}`);
+  await ctx.close();
+}
+
 await browser.close();
 server.close();
 console.log(hong ? `\n✗ ${hong} chỗ sai\n` : '\n✓ Tất cả đúng\n');
