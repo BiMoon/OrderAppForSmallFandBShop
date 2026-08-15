@@ -25,10 +25,33 @@ import { boCucNhan, chuanHoaKieuIn } from './nhanBoCuc.js';
 import { cauHinhIn, guiRawBT, guiCauNoi } from './inHoaDon.js';
 import { store } from './core.js';
 
-export const cauHinhNhan = () => ({
-  bat: false, kieu: chuanHoaKieuIn(null), tuDong: true,
-  ...(store.get('nhan', null) || {}),
-});
+/**
+ * Cấu hình máy in nhãn.
+ *
+ * Mặc định **kế thừa máy in hoá đơn** (`rieng: false`): giai đoạn đầu quán chỉ
+ * có một máy, in nhãn bằng cách thay cuộn bill bằng cuộn decal. Bật `rieng` khi
+ * quán sắm máy in nhãn thứ hai — lúc đó khổ giấy, cách gửi và địa chỉ cầu nối
+ * tách hẳn ra.
+ *
+ * Vì sao không lưu sẵn `kho`/`cach`/`cauNoi` riêng ngay từ đầu: một máy mà hai
+ * bản cấu hình thì đổi địa chỉ cầu nối ở phần hoá đơn xong, nhãn vẫn lặng lẽ
+ * bắn vào IP cũ. Hỏng kiểu đó rất khó lần ra vì nút In hoá đơn vẫn chạy tốt.
+ * Kế thừa thì chỉ có một nguồn sự thật cho tới đúng lúc quán thật sự có hai máy.
+ */
+export const cauHinhNhan = () => {
+  const luu = store.get('nhan', null) || {};
+  const hd = cauHinhIn();
+  const c = {
+    bat: false, tuDong: true, rieng: false,
+    kho: hd.kho, cach: hd.cach, cauNoi: hd.cauNoi,
+    ...luu,
+  };
+  // Chưa có máy riêng thì bám theo máy hoá đơn, kể cả khi trong store còn sót
+  // giá trị của lần bật `rieng` trước — tắt công tắc phải quay về đúng một máy.
+  if (!c.rieng) { c.kho = hd.kho; c.cach = hd.cach; c.cauNoi = hd.cauNoi; }
+  c.kieu = chuanHoaKieuIn(c.kieu);
+  return c;
+};
 export const luuCauHinhNhan = (c) => store.set('nhan', { ...cauHinhNhan(), ...c });
 
 const CAO_CHU = 26;
@@ -140,7 +163,7 @@ export function lenhInNhan(dsNhan, kho = '80') {
  * @returns {Promise<{soNhan:number, byte:number}>}
  */
 export async function inNhan(don, o = {}) {
-  const c = cauHinhIn();
+  const c = cauHinhNhan();
   const ds = boCucNhan(don, { kho: c.kho, luc: new Date(), inLai: o.inLai });
   if (!ds.length) throw new Error('Đơn này không có ly nào để in nhãn');
 

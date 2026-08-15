@@ -1156,6 +1156,7 @@ function cauHinhInSheet(){
   const c = cauHinhIn();
   const o = (v, ten, dang) => `<option value="${v}" ${dang===v?'selected':''}>${ten}</option>`;
   const t = cauHinhTem();
+  const n = cauHinhNhan();
   sheet({
     title: 'Cài đặt máy này',
     desc: 'Máy in và mã tích tem lưu riêng trên TỪNG máy ở quầy, không đồng bộ — mỗi máy phải cài một lần.',
@@ -1168,12 +1169,6 @@ function cauHinhInSheet(){
         điện thoại không hiện và quán không tích tem được ở máy này.
         Mã này chỉ cộng/trừ được tem — không đụng tới đơn hàng hay tiền.
       </p>
-
-      <label class="cong-tac" style="display:flex;gap:12px;align-items:flex-start;padding:12px 0;margin-top:14px;border-top:1px solid var(--line)">
-        <input type="checkbox" id="nhanBat" ${cauHinhNhan().bat ? 'checked' : ''} style="width:20px;height:20px;flex:none">
-        <span><b>Bật nút in nhãn dán ly</b>
-          <em style="display:block;color:var(--ink-3);font-size:12.5px;margin-top:3px">Một ly một nhãn, có tên món, tuỳ chọn và câu khách dặn. Dùng cuộn giấy decal trên chính máy in này.</em></span>
-      </label>
 
       <div class="sec-label" style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">Máy in hóa đơn</div>
       <p style="color:var(--ink-3);font-size:12.5px;line-height:1.5;margin:-4px 0 10px">
@@ -1212,10 +1207,46 @@ function cauHinhInSheet(){
         <input type="checkbox" id="inNganKeo" ${c.nganKeo ? 'checked' : ''} style="width:20px;height:20px;flex:none">
         <span><b>Đá ngăn kéo tiền khi thu tiền mặt</b>
           <em style="display:block;color:var(--ink-3);font-size:12.5px;margin-top:3px">Chỉ khi ngăn kéo cắm vào cổng RJ11 sau máy in.</em></span>
-      </label>`,
+      </label>
+
+      <div class="sec-label" style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">Máy in nhãn dán ly</div>
+
+      <label class="cong-tac" style="display:flex;gap:12px;align-items:flex-start;padding:12px 0">
+        <input type="checkbox" id="nhanBat" ${n.bat ? 'checked' : ''} style="width:20px;height:20px;flex:none">
+        <span><b>Bật nút in nhãn dán ly</b>
+          <em style="display:block;color:var(--ink-3);font-size:12.5px;margin-top:3px">Một ly một nhãn, có tên món, tuỳ chọn và câu khách dặn.</em></span>
+      </label>
+
+      <label class="cong-tac" style="display:flex;gap:12px;align-items:flex-start;padding:12px 0">
+        <input type="checkbox" id="nhanRieng" ${n.rieng ? 'checked' : ''} style="width:20px;height:20px;flex:none">
+        <span><b>Có máy in nhãn riêng</b>
+          <em style="display:block;color:var(--ink-3);font-size:12.5px;margin-top:3px">Tắt: in nhãn ra đúng máy in hóa đơn ở trên — phải thay cuộn bill bằng cuộn decal. Bật: điền địa chỉ máy thứ hai bên dưới.</em></span>
+      </label>
+
+      <div id="nhanMayWrap" class="${n.rieng ? '' : 'hide'}">
+        <div class="sec-label">Khổ giấy nhãn</div>
+        <select id="nhanKho">${Object.entries(KHO).map(([k,v]) => o(k, v.nhan, n.kho)).join('')}</select>
+
+        <div class="sec-label">Cách gửi tới máy in nhãn</div>
+        <select id="nhanCach">${Object.entries(CACH_GUI).map(([k,v]) => o(k, v.nhan, n.cach)).join('')}</select>
+        <p style="color:var(--ink-3);font-size:12.5px;line-height:1.5;margin-top:6px">
+          Hai máy thì nên dùng <b>cầu nối</b>: RawBT chỉ có một máy in mặc định, không chọn được
+          theo từng lệnh in. Chạy hai bản cầu nối, mỗi bản một cổng nghe.</p>
+
+        <div id="nhanCauNoiWrap" class="hide" style="margin-top:14px">
+          <div class="sec-label">Địa chỉ cầu nối của máy in nhãn</div>
+          <input type="url" id="nhanCauNoi" value="${esc(n.cauNoi)}" placeholder="http://192.168.1.50:9111"
+                 autocomplete="off" inputmode="url">
+          <p style="color:var(--ink-3);font-size:12.5px;line-height:1.5;margin-top:6px">
+            Phải khác cổng của máy in hóa đơn, ví dụ
+            <code>node tools/cau-noi-in.mjs --may=192.168.1.51 --nghe=9111</code>.</p>
+        </div>
+
+        <button class="btn block" id="nhanInThu" style="margin-top:10px">🏷 In thử một nhãn</button>
+      </div>`,
     actions: [
       { label: 'Đóng' },
-      { label: 'In thử', keepOpen: true, onClick(){ luuTuForm(); inThu(); } },
+      { label: 'In thử hóa đơn', keepOpen: true, onClick(){ luuTuForm(); inThu(); } },
       { label: 'Lưu', cls: 'solid', onClick(){ luuTuForm(); renderBillList(); toast('Đã lưu cài đặt máy in','ok'); } },
     ],
   });
@@ -1224,13 +1255,26 @@ function cauHinhInSheet(){
     const cach = el('inCach').value;
     el('inCachTa').textContent = CACH_GUI[cach]?.ta ?? '';
     el('inCauNoiWrap').classList.toggle('hide', cach !== 'caunoi');
+    // Tắt "máy riêng" thì mấy ô kia biến mất luôn, kẻo người dùng điền vào đó
+    // rồi tưởng nhãn đang đi máy khác trong khi nó vẫn theo máy hóa đơn.
+    const rieng = el('nhanRieng').checked;
+    el('nhanMayWrap').classList.toggle('hide', !rieng);
+    el('nhanCauNoiWrap').classList.toggle('hide', el('nhanCach').value !== 'caunoi');
   };
-  setTimeout(() => { if (el('inCach')){ el('inCach').onchange = dongBo; dongBo(); } }, 50);
+  setTimeout(() => {
+    if (!el('inCach')) return;
+    el('inCach').onchange = dongBo;
+    el('nhanCach').onchange = dongBo;
+    el('nhanRieng').onchange = dongBo;
+    el('nhanInThu').onclick = () => { luuTuForm(); inThuNhan(); };
+    dongBo();
+  }, 50);
 }
 
 function luuTuForm(){
   luuCauHinhTem({ ma: el('temMa').value.trim() });
-  luuCauHinhNhan({ bat: el('nhanBat').checked });
+  // Lưu máy in hóa đơn TRƯỚC: khi chưa bật "máy riêng" thì cấu hình nhãn kế
+  // thừa từ đó, lưu ngược thứ tự sẽ chép lại giá trị cũ của lần mở sheet.
   luuCauHinhIn({
     bat: el('inBat').checked,
     kho: el('inKho').value,
@@ -1240,6 +1284,22 @@ function luuTuForm(){
     diaChi: el('inDiaChi').value.trim(),
     nganKeo: el('inNganKeo').checked,
   });
+  luuCauHinhNhan({
+    bat: el('nhanBat').checked,
+    rieng: el('nhanRieng').checked,
+    kho: el('nhanKho')?.value || cauHinhNhan().kho,
+    cach: el('nhanCach')?.value || cauHinhNhan().cach,
+    cauNoi: el('nhanCauNoi')?.value || cauHinhNhan().cauNoi,
+  });
+}
+
+/** Một ly giả để dò xem máy in nhãn có đúng địa chỉ không. */
+function inThuNhan(){
+  inNhan({
+    ma: 'IN-THU', ten: 'Thử máy', sdt: '0900000000', kieu: 'Mang đi',
+    items: [{ name: 'Thử nhãn — tiếng Việt có dấu đủ chưa?', qty: 1, ghiChu: 'khung ghi chú phải thấy rõ' }],
+  }).then(k => toast(`Đã gửi ${k.soNhan} nhãn tới máy in`, 'ok'))
+    .catch(e => { console.error(e); toast(e.message || 'Không in được nhãn', 'err'); });
 }
 
 /** Hóa đơn giả để thử máy in mà không phải tạo hóa đơn thật cho một bàn nào. */

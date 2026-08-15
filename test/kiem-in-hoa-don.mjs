@@ -289,6 +289,108 @@ console.log('\nIn hóa đơn ra máy in nhiệt\n');
   await ctx.close();
 }
 
+/* ── 5. hai máy in: nhãn kế thừa hay đi riêng ───────────────────────────── */
+{
+  const { page, ctx, loi } = await mo();
+
+  // Chặn mọi lệnh gửi đi rồi ghi lại địa chỉ, để biết nhãn thật sự bay tới máy
+  // nào — đọc cấu hình thôi thì chưa chứng minh được đường đi.
+  await page.addInitScript(`
+    window.__gui = [];
+    const fetchGoc = window.fetch;
+    window.fetch = function(u, o){
+      if (String(u).includes('/in')) { window.__gui.push(String(u)); return Promise.resolve(new Response('', { status: 200 })); }
+      return fetchGoc.apply(this, arguments);
+    };
+  `);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#posTables .tbtn', { timeout: 8000 });
+
+  const doc = () => page.evaluate(async () => {
+    const { cauHinhNhan } = await import('./js/inNhan.js');
+    const { cauHinhIn } = await import('./js/inHoaDon.js');
+    return { nhan: cauHinhNhan(), hoaDon: cauHinhIn() };
+  });
+  const luu = () => page.locator('#shFoot .btn.solid').click();
+
+  /* một máy: nhãn phải bám theo máy hóa đơn */
+  await page.locator('#posBillIn').click();
+  await page.waitForSelector('#nhanRieng', { timeout: 5000 });
+  await page.locator('#inBat').check();
+  await page.locator('#nhanBat').check();
+  await page.locator('#inCach').selectOption('caunoi');
+  await page.locator('#inCauNoi').fill('http://10.0.0.1:9110');
+  bao(await page.locator('#nhanMayWrap').isHidden(), 'chưa bật "máy riêng" thì các ô địa chỉ nhãn ẩn đi');
+  await luu();
+  await page.waitForTimeout(300);
+
+  let c = await doc();
+  bao(c.nhan.cauNoi === 'http://10.0.0.1:9110' && c.nhan.cach === 'caunoi',
+      `một máy: nhãn kế thừa địa chỉ của hóa đơn (thấy ${c.nhan.cauNoi})`);
+
+  await page.evaluate(async () => {
+    const { inNhan } = await import('./js/inNhan.js');
+    await inNhan({ ma: 'T1', ten: 'A', sdt: '0900000000', kieu: 'Mang đi',
+                   items: [{ name: 'Espresso', qty: 1 }] });
+  });
+  bao((await page.evaluate(() => window.__gui)).at(-1) === 'http://10.0.0.1:9110/in',
+      'một máy: lệnh in nhãn thật sự bay tới máy in hóa đơn');
+
+  /* hai máy: tách hẳn ra, hóa đơn không bị kéo theo */
+  await page.locator('#posBillIn').click();
+  await page.waitForSelector('#nhanRieng', { timeout: 5000 });
+  await page.locator('#nhanRieng').check();
+  bao(await page.locator('#nhanMayWrap').isVisible(), 'bật "máy riêng" thì các ô địa chỉ nhãn hiện ra ngay');
+  await page.locator('#nhanCach').selectOption('caunoi');
+  await page.locator('#nhanCauNoi').fill('http://10.0.0.2:9111');
+  await page.locator('#nhanKho').selectOption('58');
+  await luu();
+  await page.waitForTimeout(300);
+
+  c = await doc();
+  bao(c.nhan.cauNoi === 'http://10.0.0.2:9111' && c.nhan.kho === '58',
+      `hai máy: nhãn dùng địa chỉ và khổ giấy riêng (thấy ${c.nhan.cauNoi} khổ ${c.nhan.kho})`);
+  bao(c.hoaDon.cauNoi === 'http://10.0.0.1:9110' && c.hoaDon.kho !== '58',
+      'hai máy: cài đặt máy in hóa đơn KHÔNG bị kéo theo');
+
+  await page.evaluate(async () => {
+    const { inNhan } = await import('./js/inNhan.js');
+    await inNhan({ ma: 'T2', ten: 'A', sdt: '0900000000', kieu: 'Mang đi',
+                   items: [{ name: 'Espresso', qty: 1 }] });
+  });
+  bao((await page.evaluate(() => window.__gui)).at(-1) === 'http://10.0.0.2:9111/in',
+      'hai máy: lệnh in nhãn bay tới máy thứ hai');
+
+  await page.locator('#posBillIn').click();
+  await page.waitForSelector('#nhanRieng', { timeout: 5000 });
+  // Cuộn xuống đúng phần nhãn rồi mới chụp — mặc định sheet mở ở đầu và ảnh
+  // ra toàn phần hóa đơn, không nhìn thấy thứ vừa thêm.
+  await page.locator('#nhanInThu').scrollIntoViewIfNeeded();
+  await page.waitForTimeout(3200);            // chờ toast "Đã lưu" tan đi
+  await page.screenshot({ path: 'test/anh-cai-dat-hai-may.png' });
+  console.log('  ✓ test/anh-cai-dat-hai-may.png');
+
+  /* tháo máy thứ hai: phải quay về đúng một máy, không bám giá trị cũ */
+  await page.locator('#nhanRieng').uncheck();
+  await luu();
+  await page.waitForTimeout(300);
+
+  c = await doc();
+  bao(c.nhan.cauNoi === 'http://10.0.0.1:9110' && c.nhan.kho === c.hoaDon.kho,
+      `tháo máy thứ hai thì nhãn quay lại máy hóa đơn (thấy ${c.nhan.cauNoi} khổ ${c.nhan.kho})`);
+
+  await page.evaluate(async () => {
+    const { inNhan } = await import('./js/inNhan.js');
+    await inNhan({ ma: 'T3', ten: 'A', sdt: '0900000000', kieu: 'Mang đi',
+                   items: [{ name: 'Espresso', qty: 1 }] });
+  });
+  bao((await page.evaluate(() => window.__gui)).at(-1) === 'http://10.0.0.1:9110/in',
+      'tháo xong: nhãn không còn bay tới IP của máy đã tháo');
+
+  bao(!loi.length, `không có lỗi JS${loi.length ? ': ' + loi[0] : ''}`);
+  await ctx.close();
+}
+
 await browser.close();
 server.close();
 console.log(hong ? `\n✗ ${hong} chỗ sai\n` : '\n✓ Tất cả đúng\n');
