@@ -19,6 +19,7 @@ import { TUY_CHON_NHANH, themVaoGio, suaMoTa, moTaMon } from './gioHang.js';
 import { inNhan, cauHinhNhan, luuCauHinhNhan } from './inNhan.js';
 import { choMayChu, loiBao } from './hangCho.js';
 import { goiYTien, tienThoi, chiaTo } from './tienMat.js';
+import { baoBanTaiQuan } from './thongKeQuan.js';
 
 let table    = store.get('pos.table', 1);
 let tab      = 'pad';          // pad | menu
@@ -1431,6 +1432,11 @@ function traTienSheet(code, cach){
             .then(() => {
               const { thoi } = tienThoi(dua || tong, tong);
               toast(thoi ? `Đã ghi nhận · thối ${money(thoi)}` : 'Đã ghi nhận thanh toán', 'ok');
+              // Báo số ly về sổ "Bán chạy" của app khách. KHÔNG chờ kết quả và
+              // không bắt lỗi ra màn hình: hoá đơn đã chốt xong rồi, thống kê
+              // hỏng thì để `thong-ke-lai` dựng lại, đừng làm phiền thu ngân
+              // giữa lúc khách đứng chờ tiền thối.
+              baoBanTaiQuan(b);
             })
             .catch(fail);
         }
