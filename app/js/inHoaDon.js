@@ -102,7 +102,17 @@ export async function veHoaDon(khoi, kho = '80'){
       const im = anh.get(k);
       if (im){
         const w = Math.round(rong * (k.rong || 0.6));
+        // Tắt làm mượt: mã QR phóng to bằng nội suy thì mép mỗi ô bị xám, rồi
+        // bước ngưỡng hoá 1-bit ở dưới cắt đám xám đó về đen hoặc trắng một
+        // cách tuỳ hứng, làm bề rộng các ô lệch nhau. Nhân bản điểm ảnh thì mép
+        // cứng sẵn, không có gì để ngưỡng hoá phải đoán.
+        //
+        // Ở cỡ đang in thì mã vẫn quét được kể cả khi bật làm mượt — đã thử.
+        // Tắt là để giữ biên an toàn cho giấy nhiệt in mờ và ống kính lấy nét
+        // kém, chứ không phải để sửa một lỗi đang xảy ra.
+        g.imageSmoothingEnabled = false;
         g.drawImage(im, Math.round((rong - w) / 2), y + 4, w, h - 8);
+        g.imageSmoothingEnabled = true;
       }
     }
     y += h;

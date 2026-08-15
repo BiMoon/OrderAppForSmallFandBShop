@@ -17,6 +17,8 @@
    test được. Đo font sẽ kéo cả canvas vào đây.
    ========================================================================== */
 
+import { QUAN, QR_DAT_ONLINE } from './quanInfo.js';
+
 /** Số ký tự một dòng, theo khổ giấy. */
 export const SO_COT = { '58': 32, '80': 48 };
 
@@ -80,10 +82,18 @@ export function boCucHoaDon(b, o = {}){
   const kh = [];
   const daTra = b?.status === 'paid';
 
-  kh.push(chu(o.tenQuan || 'GHÉ CẬU HAI', { co: 2, dam: true, can: 'giua' }));
-  if (o.diaChi) for (const d of ngatDong(o.diaChi, cot)) kh.push(chu(d, { can: 'giua' }));
+  kh.push(chu(o.tenQuan || QUAN.ten, { co: 2, dam: true, can: 'giua' }));
+  kh.push(chu(QUAN.slogan, { can: 'giua' }));
+  for (const d of ngatDong(o.diaChi || QUAN.diaChi, cot)) kh.push(chu(d, { can: 'giua' }));
+  // Số điện thoại nằm ở CHÂN hoá đơn cùng với Zalo và wifi, không lặp lại ở
+  // đây. Hai lần cùng một số trên một tờ giấy là hai dòng giấy vứt đi — trừ khi
+  // quán dùng số Zalo khác số gọi, lúc đó mỗi số đứng một chỗ mới có nghĩa.
+  if (QUAN.zalo !== QUAN.dienThoai) kh.push(chu(QUAN.dienThoai, { can: 'giua' }));
   kh.push(hong(6));
-  kh.push(chu(daTra ? 'HÓA ĐƠN THANH TOÁN' : 'PHIẾU TÍNH TIỀN', { dam: true, can: 'giua' }));
+  // KHÔNG gọi là "HÓA ĐƠN". Chừng nào quán chưa phát hành hoá đơn điện tử thì
+  // tờ giấy này không phải hoá đơn theo nghĩa của cơ quan thuế, và in nhầm chữ
+  // đó lên vài nghìn tờ là một rắc rối không đáng có.
+  kh.push(chu(daTra ? 'PHIẾU THANH TOÁN' : 'PHIẾU TÍNH TIỀN', { dam: true, can: 'giua' }));
   // Tờ in lại phải nhìn ra ngay. Hai tờ cùng mã nằm trên quầy mà không phân
   // biệt được là có ngày thu tiền hai lần.
   if (o.inLai) kh.push(chu('— IN LẠI —', { can: 'giua' }));
@@ -132,6 +142,12 @@ export function boCucHoaDon(b, o = {}){
     const cach = b.payMethod === 'tienmat' ? 'Tiền mặt'
       : b.payMethod === 'chuyenkhoan' ? 'Chuyển khoản' : 'Đã thu';
     kh.push(chu(haiCot(cach, tien(b.paidAmount ?? b.total), cot)));
+    // Khách đối chiếu tiền thối NGAY tại quầy, trước khi rời đi. Đếm lại sau
+    // khi đã ra khỏi cửa thì không ai giải quyết được nữa.
+    if (Number(b.tienThoi) > 0) {
+      kh.push(chu(haiCot('Khách đưa', tien(b.khachDua), cot)));
+      kh.push(chu(haiCot('Tiền thối', tien(b.tienThoi), cot), { dam: true }));
+    }
     if (b.overpaid && b.overpaidAmount) kh.push(chu(haiCot('Khách chuyển thừa', tien(b.overpaidAmount), cot)));
   } else {
     const thieu = Math.max(0, (Number(b?.total) || 0) - (Number(b?.paidAmount) || 0));
@@ -169,8 +185,57 @@ export function boCucHoaDon(b, o = {}){
     }
   }
 
+  chanHoaDon(kh, { cot, coQrTra: !daTra && !!o.qr, thuNgan: o.thuNgan ?? b?.thuBoi });
+  return kh;
+}
+
+/**
+ * Chân hoá đơn — thứ khách cầm về nhà.
+ *
+ * Thứ tự cố ý: lời cảm ơn trước, rồi mới tới chuyện của quán. Ngược lại thì tờ
+ * giấy đọc như một tờ rơi quảng cáo có đính kèm số tiền.
+ *
+ * @param {object} p
+ * @param {boolean} p.coQrTra  tờ này ĐÃ có mã QR chuyển khoản rồi
+ * @param {string}  [p.thuNgan] email người thu tiền
+ */
+export function chanHoaDon(kh, { cot, coQrTra = false, thuNgan = null } = {}) {
+  // Ai thu tiền. In phần trước @ cho gọn — khách khiếu nại thì chủ quán biết
+  // hỏi ai, mà tờ giấy cũng không phơi email đầy đủ của nhân viên ra ngoài.
+  const ten = thuNgan ? String(thuNgan).split('@')[0] : null;
+  if (ten) {
+    kh.push(hong(6));
+    kh.push(chu(haiCot('Thu ngân', ten, cot)));
+  }
+
   kh.push(hong(10));
-  kh.push(chu('Cảm ơn quý khách!', { can: 'giua' }));
+  kh.push(chu('Cảm ơn quý khách!', { dam: true, can: 'giua' }));
+
+  kh.push(hong(8));
+  kh.push(ke());
+
+  // MỘT mã QR trên một tờ giấy. Tờ chưa trả tiền đã có mã VietQR rồi; thêm mã
+  // thứ hai là khách quét nhầm cái không thu tiền, rồi cả hai bên cùng đứng
+  // chờ. Tờ đã thanh toán mới là tờ khách cầm về — chỗ đúng để mời quay lại.
+  if (!coQrTra) {
+    kh.push(hong(8));
+    kh.push(chu('QUÉT ĐỂ ĐẶT ONLINE', { dam: true, can: 'giua' }));
+    // 0,45 bề ngang giấy. Mã có 29 ô, máy in 203 dpi (8 điểm/mm), nên mỗi ô ra
+    // ~1,1mm ở khổ 80 và ~0,75mm ở khổ 58 — trên ngưỡng ~0,5mm mà điện thoại
+    // cầm tay còn bắt được. Nhỏ hơn nữa thì giấy nhiệt in mờ một chút là hỏng.
+    kh.push({ kieu: 'anh', src: QR_DAT_ONLINE, rong: 0.45 });
+    kh.push(chu(QUAN.web, { dam: true, can: 'giua' }));
+    kh.push(chu('Giao tận nơi · Đặt mang đi', { can: 'giua' }));
+    kh.push(hong(8));
+  } else {
+    kh.push(hong(6));
+    kh.push(chu('Đặt online: ' + QUAN.web, { can: 'giua' }));
+  }
+
+  kh.push(chu(haiCot(QUAN.zalo === QUAN.dienThoai ? 'Zalo / ĐT' : 'Zalo', QUAN.zalo, cot)));
+  if (QUAN.zalo !== QUAN.dienThoai) kh.push(chu(haiCot('Điện thoại', QUAN.dienThoai, cot)));
+  kh.push(chu(haiCot('Wifi', QUAN.wifi, cot)));
+  kh.push(chu(haiCot('Mật khẩu', QUAN.wifiMatKhau, cot)));
   return kh;
 }
 

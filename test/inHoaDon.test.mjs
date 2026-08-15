@@ -175,9 +175,11 @@ test('hóa đơn đã trả: đổi tiêu đề, ghi cách trả, KHÔNG in QR n
   const kh = boCucHoaDon(
     { ...HD, status: 'paid', payMethod: 'chuyenkhoan', paidAmount: 85000 },
     { qr: 'data:image/png;base64,xx' });
-  assert.ok(co(kh, 'HÓA ĐƠN THANH TOÁN'));
+  assert.ok(co(kh, 'PHIẾU THANH TOÁN'));
   assert.ok(co(kh, 'Chuyển khoản'));
-  assert.equal(kh.some(k => k.kieu === 'anh'), false, 'trả rồi mà còn in QR là mời trả lần hai');
+  assert.equal(kh.some(k => k.src === 'data:image/png;base64,xx'), false,
+    'trả rồi mà còn in mã CHUYỂN TIỀN là mời trả lần hai');
+  assert.equal(co(kh, 'Quét mã để chuyển'), false);
 });
 
 test('chưa trả và có QR thì in mã kèm đúng nội dung chuyển khoản', () => {
@@ -294,5 +296,115 @@ test('dòng tem không làm tràn khổ giấy hẹp', () => {
     for (const k of kh.filter((x) => x.kieu === 'chu')) {
       assert.ok(k.chu.length * (k.co || 1) <= SO_COT[kho], `khổ ${kho}: "${k.chu}"`);
     }
+  }
+});
+
+/* ══════════════════ chân hoá đơn ══════════════════
+
+   Tờ giấy khách cầm về nhà. Trước bản này chân hoá đơn chỉ có mỗi "Cảm ơn quý
+   khách!" — không số điện thoại, không đường quay lại quán.                 */
+
+import { QUAN, QR_DAT_ONLINE } from '../app/js/quanInfo.js';
+
+const daTra = (o = {}) => ({ ...HD, status: 'paid', payMethod: 'tienmat', paidAmount: 85000, ...o });
+const anhCua = (kh) => kh.filter((k) => k.kieu === 'anh');
+
+test('đầu hoá đơn có slogan và địa chỉ', () => {
+  const kh = boCucHoaDon(HD, {});
+  assert.ok(co(kh, QUAN.slogan));
+  assert.ok(co(kh, 'Trường Chinh'));
+});
+
+test('số điện thoại in ĐÚNG MỘT LẦN khi Zalo trùng số gọi', () => {
+  const het = chuCua(boCucHoaDon(daTra(), {})).join('\n');
+  const lan = het.split(QUAN.dienThoai).length - 1;
+  assert.equal(lan, 1, `in ${lan} lần — hai lần cùng một số là hai dòng giấy vứt đi`);
+  assert.ok(het.includes('Zalo / ĐT'));
+});
+
+test('chân hoá đơn có Zalo và wifi', () => {
+  const kh = boCucHoaDon(daTra(), {});
+  const het = chuCua(kh).join(' ');
+  assert.ok(het.includes(QUAN.zalo));
+  assert.ok(het.includes(QUAN.wifi));
+  assert.ok(het.includes(QUAN.wifiMatKhau), 'khách hỏi mật khẩu wifi nhiều hơn mọi thứ khác');
+});
+
+/* ── một mã QR trên một tờ giấy ── */
+
+test('tờ ĐÃ TRẢ in mã QR đặt online — đây là tờ khách cầm về', () => {
+  const kh = boCucHoaDon(daTra(), {});
+  const anh = anhCua(kh);
+  assert.equal(anh.length, 1);
+  assert.equal(anh[0].src, QR_DAT_ONLINE);
+  assert.ok(co(kh, 'QUÉT ĐỂ ĐẶT ONLINE'));
+  assert.ok(co(kh, QUAN.web));
+});
+
+test('tờ CHƯA TRẢ đã có mã VietQR thì KHÔNG in thêm mã thứ hai', () => {
+  const kh = boCucHoaDon(HD, { qr: 'data:image/png;base64,xx' });
+  const anh = anhCua(kh);
+  assert.equal(anh.length, 1, 'hai mã trên một tờ là khách quét nhầm cái không thu tiền');
+  assert.equal(anh[0].src, 'data:image/png;base64,xx', 'mã còn lại phải là mã CHUYỂN TIỀN');
+  assert.ok(co(kh, 'Đặt online: ' + QUAN.web), 'vẫn nhắc bằng chữ, chỉ là không thêm mã');
+});
+
+test('tờ chưa trả mà không lấy được mã VietQR thì vẫn in mã đặt online', () => {
+  const kh = boCucHoaDon(HD, {});
+  assert.equal(anhCua(kh).length, 1);
+  assert.equal(anhCua(kh)[0].src, QR_DAT_ONLINE);
+});
+
+test('mã QR đặt online nhúng thẳng trong mã nguồn, không gọi mạng', () => {
+  assert.match(QR_DAT_ONLINE, /^data:image\/png;base64,/);
+  assert.ok(QR_DAT_ONLINE.length > 200, 'chuỗi quá ngắn thì không phải một mã QR thật');
+});
+
+/* ── thu ngân ── */
+
+test('in tên thu ngân, nhưng chỉ phần trước @', () => {
+  const kh = boCucHoaDon(daTra({ thuBoi: 'linh.nv@ghecauhai.vn' }), {});
+  const het = chuCua(kh).join(' ');
+  assert.ok(het.includes('linh.nv'));
+  assert.equal(het.includes('@ghecauhai.vn'), false,
+    'phơi email đầy đủ của nhân viên lên tờ giấy phát cho khách là không cần thiết');
+});
+
+test('không biết ai thu thì bỏ hẳn dòng đó, không in "không rõ"', () => {
+  assert.equal(co(boCucHoaDon(daTra(), {}), 'Thu ngân'), false);
+});
+
+/* ── tiền thối ── */
+
+test('có thối tiền thì in ra để khách đối chiếu tại quầy', () => {
+  const kh = boCucHoaDon(daTra({ khachDua: 100000, tienThoi: 15000 }), {});
+  assert.ok(co(kh, 'Khách đưa'));
+  assert.ok(co(kh, '100.000đ'));
+  assert.ok(co(kh, 'Tiền thối'));
+  assert.ok(co(kh, '15.000đ'));
+});
+
+test('đưa đúng tiền thì không in hai dòng thừa', () => {
+  const kh = boCucHoaDon(daTra({ khachDua: 85000, tienThoi: 0 }), {});
+  assert.equal(co(kh, 'Tiền thối'), false);
+});
+
+/* ── khổ giấy ── */
+
+test('không dòng nào của chân hoá đơn tràn khổ, kể cả 58mm', () => {
+  for (const kho of ['58', '80']) {
+    const kh = boCucHoaDon(daTra({ thuBoi: 'nguyenthihoanganh@ghecauhai.vn', khachDua: 500000, tienThoi: 415000 }), { kho });
+    for (const k of kh.filter((x) => x.kieu === 'chu')) {
+      assert.ok(k.chu.length * (k.co || 1) <= SO_COT[kho],
+        `khổ ${kho}: "${k.chu}" cỡ ${k.co || 1} chiếm ${k.chu.length * (k.co || 1)}/${SO_COT[kho]} cột`);
+    }
+  }
+});
+
+test('KHÔNG gọi tờ giấy này là "hoá đơn"', () => {
+  for (const b of [HD, daTra()]) {
+    const het = chuCua(boCucHoaDon(b, {})).join(' ');
+    assert.equal(/HÓA ĐƠN/.test(het), false,
+      'chưa phát hành hoá đơn điện tử thì đây không phải hoá đơn theo nghĩa của cơ quan thuế');
   }
 });

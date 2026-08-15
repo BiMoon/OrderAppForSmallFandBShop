@@ -18,6 +18,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { existsSync, statSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { chromium } from 'playwright';
+import jsQR from 'jsqr';
 
 import { FAKE_APP, FAKE_AUTH, FAKE_DB } from './gia-firebase.mjs';
 
@@ -386,6 +387,75 @@ console.log('\nIn hóa đơn ra máy in nhiệt\n');
   });
   bao((await page.evaluate(() => window.__gui)).at(-1) === 'http://10.0.0.1:9110/in',
       'tháo xong: nhãn không còn bay tới IP của máy đã tháo');
+
+  bao(!loi.length, `không có lỗi JS${loi.length ? ': ' + loi[0] : ''}`);
+  await ctx.close();
+}
+
+/* ── 6. tờ ĐÃ THANH TOÁN: chân hoá đơn và mã QR đặt online ───────────────── */
+{
+  const { page, ctx, loi } = await mo();
+
+  const HD_TRA = {
+    ...HD,
+    status: 'paid', payMethod: 'tienmat', paidAmount: 68000,
+    khachDua: 100000, tienThoi: 32000,
+    thuBoi: 'linh.nv@ghecauhai.vn',
+  };
+
+  for (const kho of ['58', '80']) {
+    const kq = await page.evaluate(async ({ b, kho }) => {
+      const { boCucHoaDon } = await import('./js/hoaDonBoCuc.js');
+      const { veHoaDon } = await import('./js/inHoaDon.js');
+      const khoi = boCucHoaDon(b, { kho, tenQuan: 'GHÉ CẬU HAI', diaChi: '', luc: new Date('2026-08-14T15:30:00+07:00') });
+      const { diem, rong, cao } = await veHoaDon(khoi, kho);
+      // Dựng lại ảnh TỪ BITMAP 1-BIT chứ không chụp canvas: thứ máy in nhả ra
+      // là mảng `diem`, và câu hỏi cần trả lời là mã QR có sống sót qua bước
+      // ngưỡng hoá đó không.
+      const cv2 = document.createElement('canvas');
+      cv2.width = rong; cv2.height = cao;
+      const g2 = cv2.getContext('2d');
+      const im = g2.createImageData(rong, cao);
+      for (let i = 0; i < diem.length; i++) {
+        const v = diem[i] ? 0 : 255;
+        im.data[i * 4] = im.data[i * 4 + 1] = im.data[i * 4 + 2] = v;
+        im.data[i * 4 + 3] = 255;
+      }
+      g2.putImageData(im, 0, 0);
+      return { png: cv2.toDataURL('image/png'), cao, rong, diem: [...diem] };
+    }, { b: HD_TRA, kho });
+
+    const ten = `test/anh-hoa-don-tra-${kho}.png`;
+    await writeFile(ten, Buffer.from(kq.png.split(',')[1], 'base64'));
+    console.log(`  ✓ ${ten}  (${kq.rong}×${kq.cao} điểm, đúng thứ máy in nhả ra)`);
+
+    // Hai phép kiểm khác nhau, đừng lẫn.
+    //
+    // (a) Giải mã: chứng minh đường vẽ → raster → ngưỡng hoá KHÔNG phá mã. Bắt
+    //     được lỗi thật như đảo bit, sai bề rộng dòng, chia băng lệch. KHÔNG
+    //     chứng minh được là điện thoại thật quét nổi — jsQR đọc được cả những
+    //     mã bé tới mức in ra không ai quét được (đã thử ở rong 0.22).
+    // (b) Bề rộng một ô tính bằng mm: cái này mới nói được chuyện quét ngoài
+    //     đời. Đây là con số mà thu nhỏ mã đi một chút là nó tụt xuống.
+    const rgba = new Uint8ClampedArray(kq.rong * kq.cao * 4);
+    for (let i = 0; i < kq.diem.length; i++) {
+      const v = kq.diem[i] ? 0 : 255;
+      rgba[i * 4] = rgba[i * 4 + 1] = rgba[i * 4 + 2] = v;
+      rgba[i * 4 + 3] = 255;
+    }
+    const doc = jsQR(rgba, kq.rong, kq.cao);
+    bao(doc?.data === 'https://ghecauhai.vn',
+      `khổ ${kho}mm: mã QR còn nguyên sau khi ngưỡng hoá 1-bit (${doc ? doc.data : 'KHÔNG ĐỌC ĐƯỢC'})`);
+
+    if (doc) {
+      // Bốn góc của mã, đo trên chính tấm bitmap sắp gửi tới máy in.
+      const g = doc.location;
+      const rongMa = Math.abs(g.topRightCorner.x - g.topLeftCorner.x);
+      const mmMotO = rongMa / 29 / 8;          // 29 ô; máy in 203 dpi = 8 điểm/mm
+      bao(mmMotO >= 0.6,
+        `khổ ${kho}mm: mỗi ô mã QR rộng ${mmMotO.toFixed(2)}mm (cần ≥ 0.60mm để điện thoại quét được trên giấy nhiệt)`);
+    }
+  }
 
   bao(!loi.length, `không có lỗi JS${loi.length ? ': ' + loi[0] : ''}`);
   await ctx.close();

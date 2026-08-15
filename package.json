@@ -9,6 +9,11 @@
     "kiem:thongke": "node test/kiem-man-thong-ke.mjs",
     "kiem:in": "node test/kiem-in-hoa-don.mjs",
     "kiem:dangnhap": "node test/kiem-cong-dang-nhap.mjs",
-    "deploy": "firebase deploy --only hosting"
+    "deploy": "firebase deploy --only hosting",
+    "sinh-qr": "node tools/sinh-qr.mjs"
+  },
+  "devDependencies": {
+    "jsqr": "^1.4.0",
+    "playwright": "^1.48.0"
   }
 }
