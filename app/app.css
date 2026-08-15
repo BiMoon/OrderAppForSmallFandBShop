@@ -267,8 +267,11 @@ main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior
 /* ════════════════════════════════════════
    INPUTS
    ════════════════════════════════════════ */
+/* Liệt kê theo type nên mỗi kiểu ô mới lại phải nhớ thêm vào đây — đã quên
+   `tel`, `url`, `password` một lần và ba ô hiện ra trần trụi giữa màn hình. */
 input[type=text],input[type=search],input[type=number],
-input[type=date],input[type=month],select,textarea{
+input[type=date],input[type=month],input[type=tel],input[type=url],
+input[type=password],select,textarea{
   width:100%;min-height:var(--tap);padding:0 13px;
   border:1.5px solid var(--line-strong);border-radius:12px;
   background:var(--surface);font-size:16px;
@@ -459,3 +462,23 @@ input:focus,select:focus,textarea:focus{
 }
 
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ── tem tích luỹ trên màn tạo hoá đơn ────────────────────────────────────
+   Hàng hạt tem là thứ khiến chương trình có tác dụng: thu ngân liếc một cái là
+   nói được "anh còn 2 ly nữa là được tặng". Một dòng "7 điểm" không nói hộ
+   được câu đó. */
+.nb-tem{margin-top:10px;padding:11px 12px;border-radius:12px;
+        background:var(--bg);border:1px solid var(--line)}
+.nb-tem[data-du]{border-color:var(--ok);background:var(--ok-soft,rgba(46,160,110,.08))}
+.nb-tem-dau strong{display:block;font-size:14.5px}
+.nb-tem-dau span{display:block;font-size:12px;color:var(--ink-3);margin-top:2px}
+.nb-tem-hat{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+.nb-tem-hat i{width:13px;height:13px;border-radius:50%;
+              border:1px solid var(--line);background:transparent}
+.nb-tem-hat i[data-co]{background:var(--brand);border-color:var(--brand)}
+.nb-tem-doi{display:flex;gap:9px;align-items:flex-start;margin-top:11px;
+            padding-top:10px;border-top:1px solid var(--line);font-size:13.5px}
+.nb-tem-doi input{width:19px;height:19px;flex:none;accent-color:var(--brand);margin-top:1px}
+.nb-tem-doi em{display:block;font-style:normal;color:var(--ink-3);font-size:12px;margin-top:1px}
+.nb-tem-cho,.nb-tem-loi{font-size:12.5px;color:var(--ink-3);margin-top:8px;line-height:1.45}
+.nb-tem-loi{color:var(--late)}

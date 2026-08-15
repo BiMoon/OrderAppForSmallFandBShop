@@ -146,7 +146,58 @@ export function boCucHoaDon(b, o = {}){
     }
   }
 
+  // ── tem tích luỹ ──────────────────────────────────────────────────────────
+  //
+  // In số tem SAU hoá đơn này, không phải số lúc bắt đầu: khách cầm tờ giấy đi
+  // ra khỏi quán, con số họ cần biết là con số họ đang có.
+  //
+  // Máy chủ mới là nơi chốt sổ, nên đây chỉ là dự tính từ ảnh chụp lúc tạo hoá
+  // đơn. Lệch được đúng một ca: khách vừa tiêu tem đó ở một hoá đơn khác trong
+  // vài phút. Chấp nhận — thà in một con số gần đúng còn hơn không in gì, và
+  // dòng chữ nói "sau hoá đơn này" chứ không hứa là số cuối cùng.
+  const tem = temSauHoaDon(b);
+  if (tem) {
+    kh.push(hong(8));
+    kh.push(ke());
+    kh.push(chu(haiCot('Tem tích luỹ', `${tem.sau}/${tem.moc}`, cot), { dam: true }));
+    // Ngắt dòng chứ không in thẳng: câu chúc mừng dài 37 ký tự, quá khổ 58mm
+    // (32 cột), và "còn 99 ly nữa" thì dài thêm nữa.
+    for (const d of ngatDong(tem.du
+      ? 'Đủ tem — lần sau đổi một ly miễn phí!'
+      : `Còn ${tem.thieu} ly nữa là được tặng một ly`, cot)) {
+      kh.push(chu(d, { can: 'giua' }));
+    }
+  }
+
   kh.push(hong(10));
   kh.push(chu('Cảm ơn quý khách!', { can: 'giua' }));
   return kh;
+}
+
+/**
+ * Số tem sau hoá đơn này, tính từ ảnh chụp lưu lúc tạo hoá đơn.
+ *
+ * Trả `null` khi hoá đơn không gắn số điện thoại, hoặc lúc tạo chưa tra được sổ
+ * (mất mạng, chương trình đang tắt) — không đoán bừa một con số lên giấy.
+ *
+ * @param {object} b  hoá đơn, cần `sdt`, `temTruoc`, `temSe`, `temMoc`, `doiQua`
+ */
+export function temSauHoaDon(b) {
+  if (!b?.sdt) return null;
+  const moc = Math.floor(Number(b.temMoc) || 0);
+  if (moc < 2) return null;
+  // `null` phải bị loại TRƯỚC khi qua Number(): `Number(null)` là 0, một con số
+  // hợp lệ hoàn hảo — nên "chưa tra được sổ" sẽ lặng lẽ in ra "0/10 tem" như
+  // thể khách chưa mua gì bao giờ.
+  if (b.temTruoc === null || b.temTruoc === undefined || b.temTruoc === '') return null;
+  const truoc = Number(b.temTruoc);
+  if (!Number.isFinite(truoc) || truoc < 0) return null;
+
+  const them = Math.max(0, Math.floor(Number(b.temSe) || 0));
+  // Trừ đúng phần thật sự trừ được — hoá đơn hứa đổi quà lúc khách có 10 tem
+  // mà tới lúc trả chỉ còn 3 thì máy chủ kẹp lại, và tờ giấy không được in ra
+  // một con số âm.
+  const tru = b.doiQua ? Math.min(moc, truoc) : 0;
+  const sau = Math.max(0, truoc - tru + them);
+  return { sau, moc, thieu: Math.max(0, moc - sau), du: sau >= moc };
 }

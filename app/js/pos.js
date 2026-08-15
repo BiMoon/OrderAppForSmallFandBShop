@@ -14,6 +14,7 @@ import {
 } from './core.js';
 import { inHoaDon, cauHinhIn, luuCauHinhIn, CACH_GUI } from './inHoaDon.js';
 import { KHO } from './escpos.js';
+import { xemTem, ghiTem, quaTang, chuanHoaSdt, cauHinhTem, luuCauHinhTem, temBatChua } from './tem.js';
 
 let table    = store.get('pos.table', 1);
 let tab      = 'pad';          // pad | menu
@@ -788,12 +789,20 @@ function newBillSheet(){
 
   let selTable = tables.includes(table) ? table : (tables[0] ?? table);
   let discount = 0;
+  let sdt = '';            // số điện thoại khách, bỏ trống được
+  let so = null;           // sổ tem đang tra được, hoặc null
+  let doiQua = false;      // khách chọn đổi tem lấy một ly
 
   const refreshPreview = () => {
     const items = billItemsForTable(selTable);
     const subtotal = items.reduce((s,i) => s + (i.price||0)*i.qty, 0);
-    const discAmt  = Math.round(subtotal * discount / 100);
-    const total    = subtotal - discAmt;
+    // Tem trừ tiền TRƯỚC khi tính phần trăm giảm giá? Không — tặng một ly rồi
+    // còn giảm % trên phần còn lại thì hai ưu đãi chồng nhau đúng như khách
+    // mong đợi, và thứ tự này khớp với bên app khách.
+    const quaGia   = doiQua ? (quaTang(items)?.gia ?? 0) : 0;
+    const sauQua   = Math.max(0, subtotal - quaGia);
+    const discAmt  = Math.round(sauQua * discount / 100);
+    const total    = sauQua - discAmt;
     const mo       = hoaDonMoCuaBan(selTable);
     const box = el('nbPreview'); if (!box) return;
 
@@ -809,6 +818,7 @@ function newBillSheet(){
         </div>`).join('')
         + `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">
             <div class="bill-foot-row"><span>Tạm tính</span><span>${money(subtotal)}</span></div>
+            ${quaGia ? `<div class="bill-foot-row discount"><span>Đổi tem — 1 ${esc(quaTang(items)?.ten ?? 'ly')}</span><span>-${money(quaGia)}</span></div>` : ''}
             ${discount ? `<div class="bill-foot-row discount"><span>Giảm ${discount}%</span><span>-${money(discAmt)}</span></div>` : ''}
             <div class="bill-foot-row total"><span>Tổng</span><span>${money(total)}</span></div>
           </div>`
@@ -825,6 +835,11 @@ function newBillSheet(){
           ? tables.map(t => `<button class="chip ${t==selTable?'active':''}" data-t="${t}">Bàn ${t}</button>`).join('')
           : '<span style="color:var(--ink-3);font-size:13.5px">Không bàn nào đang có món chưa tính tiền.</span>'}
       </div>
+      ${temBatChua() ? `
+      <div class="sec-label">Số điện thoại khách <span style="font-weight:400;color:var(--ink-3)">— bỏ trống cũng được</span></div>
+      <input type="tel" id="nbSdt" inputmode="tel" autocomplete="off" placeholder="09xx xxx xxx" maxlength="15">
+      <div id="nbTem"></div>` : ''}
+
       <div class="sec-label">Khuyến mãi (%)</div>
       <div style="display:flex;align-items:center;gap:10px">
         <input type="range" id="nbDiscount" min="0" max="100" step="5" value="0"
@@ -841,11 +856,23 @@ function newBillSheet(){
           const items = billItemsForTable(selTable);
           if (!items.length) return toast('Bàn này chưa có món', 'err');
           const subtotal = items.reduce((s,i) => s+(i.price||0)*i.qty, 0);
-          const discAmt  = Math.round(subtotal * discount / 100);
-          const total    = subtotal - discAmt;
-          if (total <= 0) return toast('Tổng tiền bằng 0 — kiểm tra lại giá món', 'err');
+          const qua      = doiQua ? quaTang(items) : null;
+          const quaGia   = qua?.gia ?? 0;
+          const sauQua   = Math.max(0, subtotal - quaGia);
+          const discAmt  = Math.round(sauQua * discount / 100);
+          const total    = sauQua - discAmt;
+          if (total < 0) return toast('Tổng tiền âm — kiểm tra lại giá món', 'err');
 
-          saveBill({ table: selTable, items, subtotal, discount, discAmt, total })
+          // Tem chỉ ghi vào sổ khi hoá đơn ĐÃ THANH TOÁN. Ở đây mới là ghi ý
+          // định lên hoá đơn: hoá đơn bị xoá trước khi trả thì không có tem nào
+          // phải đi đòi lại, và không ai mất tem oan.
+          // Chụp lại số tem lúc này để in lên giấy. Không lưu thì lúc in phải
+          // gọi máy chủ lần nữa, mà lúc đó khách đã đứng dậy đi rồi.
+          saveBill({ table: selTable, items, subtotal, discount, discAmt, total,
+                     sdt: chuanHoaSdt(sdt) ?? '', doiQua: !!qua, qua: qua ?? null,
+                     temTruoc: so ? so.tem : null,
+                     temMoc: so ? so.moc : null,
+                     temSe: items.reduce((s, i) => s + ((i.price || 0) > 0 ? (Number(i.qty) || 0) : 0), 0) })
             .then(code => { closeSheet(); setView('bill'); toast('Đã tạo hóa đơn ' + code, 'ok'); })
             .catch(fail);
         }
@@ -868,6 +895,51 @@ function newBillSheet(){
       el('nbDiscVal').textContent = discount + '%';
       refreshPreview();
     };
+
+    const oSdt = el('nbSdt');
+    if (oSdt){
+      let hen = null, lan = 0;
+      oSdt.oninput = () => {
+        sdt = oSdt.value;
+        doiQua = false; so = null;
+        veTem('');
+        clearTimeout(hen);
+        if (!chuanHoaSdt(sdt)) { refreshPreview(); return; }
+        // Hoãn 400ms rồi mới hỏi: gõ 10 số là 10 lượt gọi máy chủ cho một hoá
+        // đơn. `lan` bỏ kết quả về trễ của số cũ — mạng quán chập thì thứ tự
+        // trả lời không theo thứ tự gửi.
+        const cua = ++lan;
+        veTem('<p class="nb-tem-cho">Đang tra sổ tem…</p>');
+        hen = setTimeout(() => {
+          xemTem(sdt)
+            .then((kq) => { if (cua === lan){ so = kq; veTemSo(); refreshPreview(); } })
+            .catch((e) => { if (cua === lan) veTem(`<p class="nb-tem-loi">${esc(e.message)}</p>`); });
+        }, 400);
+      };
+    }
+
+    function veTem(html){ const b = el('nbTem'); if (b) b.innerHTML = html; }
+
+    function veTemSo(){
+      if (!so) return veTem('<p class="nb-tem-cho">Chương trình tích tem đang tắt.</p>');
+      const hat = Array.from({ length: so.moc }, (_, i) =>
+        `<i${i < so.tem ? ' data-co' : ''}></i>`).join('');
+      veTem(`
+        <div class="nb-tem" ${so.doiDuoc ? 'data-du' : ''}>
+          <div class="nb-tem-dau">
+            <strong>${so.doiDuoc ? 'Đủ tem — đổi được 1 ly' : `${so.tem}/${so.moc} tem`}</strong>
+            <span>${so.doiDuoc ? 'Tem chỉ trừ khi hoá đơn đã thanh toán' : `còn ${so.thieu} ly nữa`}</span>
+          </div>
+          <div class="nb-tem-hat">${hat}</div>
+          ${so.doiDuoc ? `
+            <label class="nb-tem-doi">
+              <input type="checkbox" id="nbDoiQua" ${doiQua ? 'checked' : ''}>
+              <span>Đổi tem lấy một ly miễn phí <em>(ly đắt nhất trong hoá đơn)</em></span>
+            </label>` : ''}
+        </div>`);
+      const cb = el('nbDoiQua');
+      if (cb) cb.onchange = () => { doiQua = cb.checked; refreshPreview(); };
+    }
   }, 50);
 }
 
@@ -983,10 +1055,26 @@ async function inMotHoaDon(code, nut){
 function cauHinhInSheet(){
   const c = cauHinhIn();
   const o = (v, ten, dang) => `<option value="${v}" ${dang===v?'selected':''}>${ten}</option>`;
+  const t = cauHinhTem();
   sheet({
-    title: 'Máy in hóa đơn',
-    desc: 'Hóa đơn được in dưới dạng ẢNH nên tiếng Việt có dấu đầy đủ. Máy in nhiệt rẻ hầu như không có bảng mã tiếng Việt, in chữ thẳng là mất dấu.',
+    title: 'Cài đặt máy này',
+    desc: 'Máy in và mã tích tem lưu riêng trên TỪNG máy ở quầy, không đồng bộ — mỗi máy phải cài một lần.',
     body: `
+      <div class="sec-label" style="margin-top:0">Mã thiết bị để tích tem</div>
+      <input type="password" id="temMa" value="${esc(t.ma)}" autocomplete="off" spellcheck="false"
+             placeholder="dán chuỗi bí mật vào đây">
+      <p style="color:var(--ink-3);font-size:12.5px;line-height:1.5;margin-top:6px">
+        Lấy đúng chuỗi đã đặt ở biến <code>LOYALTY_DEVICE_KEY</code> trên Netlify. Bỏ trống thì ô số
+        điện thoại không hiện và quán không tích tem được ở máy này.
+        Mã này chỉ cộng/trừ được tem — không đụng tới đơn hàng hay tiền.
+      </p>
+
+      <div class="sec-label" style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">Máy in hóa đơn</div>
+      <p style="color:var(--ink-3);font-size:12.5px;line-height:1.5;margin:-4px 0 10px">
+        Hóa đơn in dưới dạng ẢNH nên tiếng Việt có dấu đầy đủ. Máy in nhiệt rẻ hầu như không có
+        bảng mã tiếng Việt, in chữ thẳng là mất dấu.
+      </p>
+
       <label class="cong-tac" style="display:flex;gap:12px;align-items:flex-start;padding:12px 0">
         <input type="checkbox" id="inBat" ${c.bat ? 'checked' : ''} style="width:20px;height:20px;flex:none">
         <span><b>Bật nút In trên thẻ hóa đơn</b>
@@ -1035,6 +1123,7 @@ function cauHinhInSheet(){
 }
 
 function luuTuForm(){
+  luuCauHinhTem({ ma: el('temMa').value.trim() });
   luuCauHinhIn({
     bat: el('inBat').checked,
     kho: el('inKho').value,
@@ -1072,9 +1161,37 @@ function baoTienVe(){
         audio.tienVe(); audio.buzz();
         toast(`Bàn ${b.table} đã chuyển ${money(b.paidAmount || b.total)}`, 'ok');
       }
+      if (b) ghiTemChoHoaDon(b);
     }
   }
   daThayBill = bayGio;
+}
+
+/**
+ * Ghi tem cho một hoá đơn vừa chuyển sang đã thanh toán.
+ *
+ * Chạy ở MỌI máy đang mở màn hoá đơn, nên cùng một hoá đơn có thể bị gửi lên
+ * ba lần từ ba điện thoại. Không sao: mã hoá đơn QCH… chính là khoá chống ghi
+ * hai lần ở máy chủ, nên lần thứ hai trở đi chỉ trả về `daGhi: true`.
+ *
+ * Không chờ kết quả, không chặn gì: hoá đơn đã thanh toán rồi, và đánh đổi
+ * trải nghiệm ở quầy lấy vài cái tem là sai chiều. Hỏng thì báo nhẹ một câu.
+ */
+function ghiTemChoHoaDon(b){
+  const sdt = chuanHoaSdt(b?.sdt);
+  if (!sdt || !temBatChua()) return;
+  ghiTem({ ma: b.code || b.key, sdt, items: b.items ?? [], doiQua: !!b.doiQua })
+    .then((kq) => {
+      if (kq.daGhi) return;                       // máy khác ghi trước rồi
+      if (kq.thieuTem) {
+        toast(`Khách thiếu ${kq.thieuTem} tem — quán vẫn tặng ly này`, 'err');
+      } else if (b.doiQua) {
+        toast(`Đã trừ tem, khách còn ${kq.tem} tem`, 'ok');
+      } else {
+        toast(`Đã tích tem — khách có ${kq.tem}/${kq.moc}`, 'ok');
+      }
+    })
+    .catch((e) => { console.error(e); toast('Không ghi được tem: ' + e.message, 'err'); });
 }
 
 function traTienSheet(code, cach){

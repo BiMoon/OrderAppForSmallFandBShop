@@ -243,3 +243,56 @@ test('dòng tổng cộng luôn giữ được số tiền, kể cả số dài'
   const dong = chuCua(kh).find(c => c.startsWith('TỔNG CỘNG'));
   assert.ok(dong?.endsWith('12.345.678đ'), `thấy "${dong}"`);
 });
+
+/* ══════════════════ dòng tem trên hoá đơn ══════════════════ */
+
+import { temSauHoaDon } from '../app/js/hoaDonBoCuc.js';
+
+const HD_TEM = { ...HD, sdt: '0901234567', temTruoc: 6, temMoc: 10, temSe: 3, doiQua: false };
+
+test('không có số điện thoại thì KHÔNG in dòng tem', () => {
+  assert.equal(temSauHoaDon(HD), null);
+  assert.equal(co(boCucHoaDon(HD, {}), 'Tem tích luỹ'), false);
+});
+
+test('tra sổ hụt lúc tạo hoá đơn thì cũng không in — không đoán bừa', () => {
+  assert.equal(temSauHoaDon({ ...HD_TEM, temTruoc: null }), null, 'mất mạng lúc tra sổ');
+  assert.equal(temSauHoaDon({ ...HD_TEM, temMoc: null }), null, 'chương trình đang tắt');
+  assert.equal(temSauHoaDon({ ...HD_TEM, temTruoc: -1 }), null);
+});
+
+test('in số tem SAU hoá đơn này, không phải số lúc bắt đầu', () => {
+  assert.deepEqual(temSauHoaDon(HD_TEM), { sau: 9, moc: 10, thieu: 1, du: false },
+    'khách cầm tờ giấy đi ra — con số họ cần là con số họ đang có');
+  const kh = boCucHoaDon(HD_TEM, {});
+  const dong = chuCua(kh).find((c) => c.startsWith('Tem tích luỹ'));
+  assert.ok(dong?.endsWith('9/10'), `thấy "${dong}"`);
+  assert.ok(co(kh, 'Còn 1 ly nữa là được tặng một ly'));
+});
+
+test('đủ tem thì đổi lời chúc mừng, không nói "còn 0 ly nữa"', () => {
+  const kh = boCucHoaDon({ ...HD_TEM, temTruoc: 8, temSe: 3 }, {});
+  assert.ok(co(kh, 'Đủ tem — lần sau đổi một ly miễn phí!'));
+  assert.equal(co(kh, 'Còn 0 ly'), false);
+});
+
+test('hoá đơn có đổi quà thì trừ mốc rồi mới cộng tem mới', () => {
+  assert.deepEqual(temSauHoaDon({ ...HD_TEM, temTruoc: 10, temSe: 2, doiQua: true }),
+    { sau: 2, moc: 10, thieu: 8, du: false });
+});
+
+test('hứa đổi quà mà tới lúc trả không đủ tem: KHÔNG in số âm', () => {
+  // Khách có 10 tem lúc tạo hoá đơn, tiêu mất ở hoá đơn khác, còn 3.
+  const t = temSauHoaDon({ ...HD_TEM, temTruoc: 3, temSe: 1, doiQua: true });
+  assert.equal(t.sau, 1, 'trừ đúng phần trừ được (3), rồi cộng 1');
+  assert.ok(t.sau >= 0);
+});
+
+test('dòng tem không làm tràn khổ giấy hẹp', () => {
+  for (const kho of ['58', '80']) {
+    const kh = boCucHoaDon({ ...HD_TEM, temMoc: 100, temTruoc: 99 }, { kho });
+    for (const k of kh.filter((x) => x.kieu === 'chu')) {
+      assert.ok(k.chu.length * (k.co || 1) <= SO_COT[kho], `khổ ${kho}: "${k.chu}"`);
+    }
+  }
+});

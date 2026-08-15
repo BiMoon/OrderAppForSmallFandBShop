@@ -52,7 +52,11 @@ const MENU = [
   { STT: 3, 'Tên Món': 'Bạc xỉu', 'Đơn giá': 25000 },
 ];
 
-async function mo({ cauHinhOK = true } = {}){
+/** Mọi lần app gọi /api/tich-diem, ghi lại ở đây để bài kiểm soi. */
+let daGuiTem = [];
+
+async function mo({ cauHinhOK = true, maTem = 'ma-may-quay' } = {}){
+  daGuiTem = [];
   // Chặn service worker: nó cache vỏ app và tự trả lời thay máy chủ, nên bài
   // kiểm sẽ đo bản đã cache của lần chạy trước chứ không phải mã vừa sửa.
   const ctx = await browser.newContext({
@@ -93,9 +97,26 @@ async function mo({ cauHinhOK = true } = {}){
   await page.route(u => u.hostname === 'img.vietqr.io',
     r => r.fulfill({ status:200, contentType:'image/png', body: Buffer.from('89504e470d0a1a0a','hex') }));
 
+  // Sổ tem: 0901234567 đang có 7/10, 0909999999 đủ 10. Bản giả ghi lại mọi lần
+  // `ghi` để bài kiểm soi được thu ngân đã gửi lên đúng cái gì.
+  await page.route(u => u.pathname.endsWith('/api/tich-diem'), (r) => {
+    let t = {};
+    try { t = JSON.parse(r.request().postData() ?? '{}'); } catch { /* thôi */ }
+    const so = String(t.sdt ?? '').replace(/\D/g, '');
+    const co = { '0901234567': 7, '0909999999': 10 }[so] ?? 0;
+    daGuiTem.push({ ...t, maThietBi: r.request().headers()['x-thiet-bi'] ?? '' });
+    const tem = t.action === 'ghi'
+      ? Math.max(0, co - (t.doiQua ? 10 : 0)) + (t.items ?? []).filter(i => (i.price || 0) > 0)
+          .reduce((s, i) => s + (Number(i.qty) || 0), 0)
+      : co;
+    r.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ ok: true, bat: true, tem, moc: 10, thieu: Math.max(0, 10 - tem), doiDuoc: co >= 10, daGhi: false, thieuTem: 0 }) });
+  });
+
   // Chọn sẵn vai trò thu ngân để app vào thẳng màn Đặt món.
   await page.addInitScript(`localStorage.setItem("phache.v1.role", JSON.stringify("cashier"));
-                            localStorage.setItem('phache.v1.pos.view', '"entry"');`);
+                            localStorage.setItem('phache.v1.pos.view', '"entry"');
+                            localStorage.setItem('phache.v1.tem', ${JSON.stringify(JSON.stringify({ ma: maTem }))});`);
 
   await page.goto(`http://localhost:${PORT}/app/`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1200);
@@ -210,6 +231,85 @@ console.log('\nMàn thanh toán trong quán\n');
   bao(await page.locator('.qr-thieu').count() === 1, 'nói rõ là chưa lấy được số tài khoản');
   bao(!loi.length, `không có lỗi JS${loi.length ? ': ' + loi[0] : ''}`);
   await page.screenshot({ path: 'test/anh-thieu-cau-hinh.png' });
+  await ctx.close();
+}
+
+/* ── 5. tích tem theo số điện thoại ─────────────────────────────────────── */
+{
+  const { page, ctx, loi } = await mo();
+  await page.evaluate(() => {
+    window.__db.ghi('history/h1', { table: 4, item: 'Espresso', quantity: 2, price: 18000,
+      completedDate: new Date().toISOString().slice(0,10), timestamp: Date.now() - 600000 });
+  });
+  await page.waitForTimeout(300);
+  await page.locator('.tbtn[data-t="4"]').click();
+  await page.locator('#posView button[data-v="bill"]').click();
+  await page.locator('#posBillNew').click();
+  // Chờ xem trước vẽ xong: đó là dấu hiệu newBillSheet đã gắn xong trình xử lý
+  // sự kiện (nó gắn trong setTimeout sau khi sheet dựng DOM). Gõ trước lúc đó
+  // thì sự kiện `input` rơi vào khoảng trống — bài kiểm đỏ mà app thì đúng.
+  await page.waitForSelector('#nbPreview .bill-row', { timeout: 5000 });
+  await page.waitForSelector('#nbSdt', { timeout: 5000 });
+
+  bao(true, 'có mã thiết bị thì màn tạo hóa đơn hiện ô số điện thoại');
+
+  // Khách đang tích dở: hiện hạt tem, KHÔNG mời đổi quà.
+  await page.locator('#nbSdt').fill('0901234567');
+  await page.waitForSelector('.nb-tem-hat i[data-co]', { timeout: 5000 });
+  const to = await page.locator('.nb-tem-hat i[data-co]').count();
+  bao(to === 7, `7/10 hạt tem đã tô (thấy ${to})`);
+  bao(await page.locator('#nbDoiQua').count() === 0, 'chưa đủ tem thì KHÔNG mời đổi quà');
+  bao(daGuiTem.at(-1)?.maThietBi === 'ma-may-quay', 'gửi kèm mã thiết bị ở header x-thiet-bi');
+  await page.screenshot({ path: 'test/anh-tem-quan.png' });
+
+  // Khách đủ tem: bấm đổi thì tổng tiền tụt đúng giá ly đắt nhất.
+  await page.locator('#nbSdt').fill('0909999999');
+  await page.waitForSelector('#nbDoiQua', { timeout: 5000 });
+  const truoc = await page.locator('#nbPreview .bill-foot-row.total span:last-child').innerText();
+  await page.locator('#nbDoiQua').check();
+  await page.waitForTimeout(300);
+  const sau = await page.locator('#nbPreview .bill-foot-row.total span:last-child').innerText();
+  bao(truoc.includes('36.000') && sau.includes('18.000'),
+      `đổi tem trừ đúng giá một ly: ${truoc} -> ${sau}`);
+  await page.screenshot({ path: 'test/anh-tem-doi-qua.png' });
+
+  await page.locator('#shFoot .btn.solid').click();
+  await page.waitForSelector('.bill-card', { timeout: 5000 });
+  const ma = (await page.locator('.bill-head .time').innerText()).match(/QCH\d{10}/)?.[0];
+
+  bao(daGuiTem.every(t => t.action !== 'ghi'),
+      'TẠO hóa đơn chưa ghi tem — hóa đơn bị xóa trước khi trả thì không có tem nào phải đòi lại');
+
+  // Tiền về -> lúc đó mới ghi sổ.
+  await page.evaluate((m) => window.__db.traTien(m), ma);
+  await page.waitForTimeout(900);
+  const ghi = daGuiTem.filter(t => t.action === 'ghi');
+  bao(ghi.length === 1, `thanh toán xong mới ghi sổ, đúng 1 lần (thấy ${ghi.length})`);
+  bao(ghi[0]?.ma === ma, 'ghi theo MÃ HÓA ĐƠN — cũng là khóa chống ghi hai lần ở máy chủ');
+  bao(ghi[0]?.doiQua === true, 'gửi kèm ý định đổi quà đã chốt trên hóa đơn');
+  bao(ghi[0]?.tem === undefined && ghi[0]?.temCong === undefined,
+      'KHÔNG tự gửi số tem lên — máy chủ đếm lấy từ danh sách món');
+  bao(Array.isArray(ghi[0]?.items) && ghi[0].items.length > 0, 'gửi danh sách món để máy chủ đếm');
+
+  bao(!loi.length, `không có lỗi JS${loi.length ? ': ' + loi[0] : ''}`);
+  await ctx.close();
+}
+
+/* ── 6. chưa nhập mã thiết bị thì màn hóa đơn gọn như cũ ────────────────── */
+{
+  const { page, ctx, loi } = await mo({ maTem: '' });
+  await page.evaluate(() => {
+    window.__db.ghi('orders/o1', { table: 6, item: 'Espresso', quantity: 1, price: 18000,
+      time: '09:00', sentAt: Date.now() });
+  });
+  await page.waitForTimeout(300);
+  await page.locator('.tbtn[data-t="6"]').click();
+  await page.locator('#posView button[data-v="bill"]').click();
+  await page.locator('#posBillNew').click();
+  await page.waitForSelector('#nbPreview', { timeout: 5000 });
+  bao(await page.locator('#nbSdt').count() === 0, 'chưa có mã thiết bị -> không có ô số điện thoại');
+  bao(daGuiTem.length === 0, 'và không gọi máy chủ tích điểm lần nào');
+  bao(!loi.length, `không có lỗi JS${loi.length ? ': ' + loi[0] : ''}`);
   await ctx.close();
 }
 

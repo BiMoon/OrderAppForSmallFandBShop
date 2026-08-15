@@ -106,6 +106,8 @@ const HD = {
     { name: 'Trà sữa socola bánh oreo vụn', qty: 1, price: 45000 },
   ],
   subtotal: 85000, discount: 20, discAmt: 17000, total: 68000, paidAmount: 0,
+  // Khách có 6 tem, hoá đơn này thêm 3 -> in ra 9/10, còn 1 ly nữa.
+  sdt: '0901234567', temTruoc: 6, temMoc: 10, temSe: 3, doiQua: false,
 };
 
 console.log('\nIn hóa đơn ra máy in nhiệt\n');
@@ -122,11 +124,14 @@ console.log('\nIn hóa đơn ra máy in nhiệt\n');
         diaChi: '12 Nguyễn Huệ, Q.1 · 0983 234 540', qr,
         luc: new Date('2026-08-14T15:30:00+07:00') });
       const { rong, cao, canvas } = await veHoaDon(khoi, kho);
-      return { rong, cao, png: canvas.toDataURL('image/png') };
+      const chu = khoi.filter(k => k.kieu === 'chu').map(k => k.chu);
+      return { rong, cao, png: canvas.toDataURL('image/png'),
+               coTem: chu.some(c => c.startsWith('Tem tích luỹ') && c.endsWith('9/10')) };
     }, { b: HD, kho, qr: QR_GIA });
 
     bao(kq.rong === (kho === '58' ? 384 : 576), `khổ ${kho}mm vẽ đúng ${kq.rong} điểm ngang`);
     bao(kq.cao > 300 && kq.cao < 2000, `chiều cao hợp lý: ${kq.cao} điểm`);
+    bao(kq.coTem, `khổ ${kho}mm in được dòng tem tích luỹ`);
     const ten = `test/anh-hoa-don-${kho}.png`;
     await writeFile(ten, Buffer.from(kq.png.split(',')[1], 'base64'));
     console.log(`  ✓ ${ten}`);
