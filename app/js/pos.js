@@ -4,14 +4,15 @@
    Chọn món → Giỏ hàng → Chưa pha xong. Dải bàn luôn nằm trên cùng.
    ========================================================================== */
 import {
-  el, esc, rxEsc, money, hm, fmtElapsed, ageClass, nf, ymd,
+  el, esc, rxEsc, money, hm, fmtElapsed, ageClass, nf, ymd, dmy,
   TABLES, CANCEL_REASONS, data, onData, findMenuItem, nameOf, priceOf,
   sendOrders, requestCancel, clearCancel, saveBill, traTay, moLaiHoaDon, xoaHoaDon,
-  vietQRUrl, VIETQR, taiCauHinhQR,
+  vietQRUrl, VIETQR, taiCauHinhQR, taiHoaDonKhoang,
   monChuaTinhTien, hoaDonMoCuaBan, trangThaiBan, TRANG_THAI_BAN,
   db, FB,
   toast, sheet, closeSheet, store, audio
 } from './core.js';
+import { sanPhien } from './phien.js';
 import { inHoaDon, cauHinhIn, luuCauHinhIn, CACH_GUI } from './inHoaDon.js';
 import { KHO } from './escpos.js';
 import { xemTem, ghiTem, quaTang, chuanHoaSdt, cauHinhTem, luuCauHinhTem, temBatChua } from './tem.js';
@@ -101,6 +102,21 @@ function shell(){
       <div class="sec-label" style="margin:0;flex:1" id="posBillNote"></div>
       <button class="btn sm" id="posBillIn" title="Cài đặt máy in">🖨</button>
       <button class="btn sm solid" id="posBillNew">✚ Tạo hóa đơn</button>
+    </div>
+    <div class="seg" id="posBillLoc" style="margin-bottom:12px">
+      <button data-l="cho">Chờ trả <span class="c" id="vcCho"></span></button>
+      <button data-l="nay">Hôm nay</button>
+      <button data-l="tim">🔍 Tìm</button>
+    </div>
+    <div id="posBillTim" class="hide" style="margin-bottom:12px">
+      <div class="field"><span class="ic">🔍</span>
+        <input type="search" id="btMa" placeholder="Mã hóa đơn QCH… hoặc số bàn" autocomplete="off">
+      </div>
+      <div class="row mt8" style="gap:8px">
+        <input type="date" id="btTu" style="flex:1">
+        <input type="date" id="btDen" style="flex:1">
+      </div>
+      <div class="sec-label" id="btNote" style="margin:8px 0 0"></div>
     </div>
     <div id="posBillList"></div>
   </div>`;
@@ -357,6 +373,31 @@ const CSS = `
 /* Nút xóa giữ bề rộng cố định. Để nó flex:1 như hai nút kia là ba nút chia ba
    phần bằng nhau, chữ tràn ra ngoài và đè lên nhau trên máy 390px. */
 .bill-acts .btn.danger{flex:0 0 46px;padding-inline:0}
+
+/* Hóa đơn ĐÃ TRẢ thu về một dòng. Chạm để bung ra bản đầy đủ.
+   Chiều cao một dòng ~52px so với ~230px của tấm thẻ — cùng số hóa đơn nhưng
+   cuộn ngắn đi hơn bốn lần, và mắt lướt qua được thay vì phải đọc. */
+.bill-gon{
+  display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  background:var(--surface);border:1.5px solid var(--line);border-left:4px solid var(--ok);
+  border-radius:12px;margin-bottom:8px;padding:11px 13px;min-height:52px;
+  font:inherit;color:inherit;cursor:pointer;
+}
+.bill-gon:active{background:var(--surface-2)}
+.bill-gon .g1{flex:1;min-width:0}
+.bill-gon .gt{font-size:14px;font-weight:700;line-height:1.25;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bill-gon .gs{font-size:11.5px;color:var(--ink-3);margin-top:2px;font-variant-numeric:tabular-nums;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bill-gon .gv{flex:none;font-size:15px;font-weight:800;font-variant-numeric:tabular-nums}
+.bill-gon .gc{flex:none;color:var(--ink-3);font-size:13px}
+/* Hóa đơn còn treo từ phiên trước: tiền chưa vào két, không được lẫn vào đám
+   đã xong. Viền cảnh báo + dòng nhắc riêng ở trên. */
+.bill-cu{border-left-color:var(--warn)}
+.bill-nhom{font-size:11.5px;font-weight:700;color:var(--ink-3);text-transform:uppercase;
+  letter-spacing:.06em;margin:16px 0 8px}
+.bill-nhom:first-child{margin-top:0}
+.bill-nhom.canh{color:var(--warn)}
 `;
 
 /* ─────────────────── khởi tạo ─────────────────── */
@@ -512,7 +553,22 @@ function bind(){
     if (b.dataset.a === 'ack')  return clearCancel(key).catch(fail);
   };
   el('posBillNew').onclick = () => newBillSheet();
+  el('posBillLoc').onclick = e => {
+    const b = e.target.closest('button[data-l]'); if (!b) return;
+    billLoc = b.dataset.l; store.set('pos.billLoc', billLoc);
+    renderBillList();
+    if (billLoc === 'tim') setTimeout(() => el('btMa')?.focus(), 60);
+  };
+  ['btMa','btTu','btDen'].forEach(id => {
+    const o = el(id); if (!o) return;
+    o.oninput = timHoaDon;
+    o.onchange = timHoaDon;
+  });
   el('posBillList').onclick = e => {
+    const g = e.target.closest('[data-bill-mo]');
+    if (g){ billMo.add(g.dataset.billMo); return renderBillList(); }
+    const z = e.target.closest('[data-bill-gon]');
+    if (z){ billMo.delete(z.dataset.billGon); return renderBillList(); }
     const c = e.target.closest('[data-bill-cash]');
     if (c) return traTienSheet(c.dataset.billCash, 'tienmat');
     const m = e.target.closest('[data-bill-manual]');
@@ -528,6 +584,10 @@ function bind(){
       return taiCauHinhQR().then(() => { renderBillList(); toast('Đã tải lại cấu hình'); });
   };
   el('posBillIn').onclick = () => cauHinhInSheet();
+  // Mặc định ô ngày là hôm nay — người tra cứu thường tìm hóa đơn vừa xảy ra,
+  // và một ô ngày trống thì phải bấm hai lần mới tìm được gì.
+  if (el('btTu')) el('btTu').value = ymd();
+  if (el('btDen')) el('btDen').value = ymd();
 }
 // Lỗi Firebase thì câu mặc định hữu ích hơn nguyên văn tiếng Anh của SDK. Còn
 // lỗi mình tự ném ra để chặn một việc sai thì đã có câu tiếng Việt nói rõ phải
@@ -1085,22 +1145,163 @@ function nguoiLam(b){
     : '';
 }
 
+/* ─────────────────── lọc danh sách hóa đơn ───────────────────
+
+   Màn này từng vẽ THẲNG cả `data.bills` — tức 200 tấm thẻ đầy đủ, mỗi tấm ~230px.
+   Sau vài ngày là gần 40.000px cuộn, vẽ lại toàn bộ mỗi lần nhánh `bills` đổi,
+   và hóa đơn đang chờ trả tiền — thứ DUY NHẤT thu ngân cần lúc đó — chìm nghỉm
+   giữa đám đã xong.
+
+   Ba chế độ, không có chế độ "tất cả": một danh sách không giới hạn thì sớm muộn
+   cũng quay lại đúng chỗ này.
+
+     • cho — mọi hóa đơn CHƯA TRẢ, bất kể cũ mới. Đây là tiền chưa vào két.
+     • nay — hóa đơn của phiên hiện tại (mốc 4h sáng của phien.js, nên nó TỰ dọn,
+             không ai phải bấm), CỘNG mọi hóa đơn chưa trả còn treo từ trước.
+             Treo từ hôm kia mà biến mất khỏi màn mặc định là mất tiền im lặng.
+     • tim — tra cứu qua máy chủ, với tới cả hóa đơn đã rơi khỏi mốc 200.        */
+let billLoc = store.get('pos.billLoc', 'nay');
+const billMo = new Set();          // mã hóa đơn ĐÃ TRẢ đang được bung ra xem
+let billTim = { dang: false, ket: null, note: '' };
+
+/** Hóa đơn đã trả gom lại một dòng; chạm mới bung. Chưa trả thì luôn đầy đủ. */
+const gonDuoc = (b) => b.status === 'paid' && !billMo.has(b.code);
+
+function locBill(){
+  const moi = (a, b) => (b.createdAt || 0) - (a.createdAt || 0);
+  if (billLoc === 'tim') return { list: billTim.ket ? [...billTim.ket].sort(moi) : [], cu: [] };
+
+  const chuaTra = data.bills.filter(b => b.status !== 'paid').sort(moi);
+  if (billLoc === 'cho') return { list: chuaTra, cu: [] };
+
+  const san = sanPhien();
+  const trongPhien = (b) => (Number(b.createdAt) || 0) >= san;
+  return {
+    list: data.bills.filter(trongPhien).sort(moi),
+    cu:   chuaTra.filter(b => !trongPhien(b)),
+  };
+}
+
+/* ─────────────────── tra cứu hóa đơn cũ ───────────────────
+
+   `data.bills` chỉ giữ 200 hóa đơn gần nhất, nên hóa đơn hôm kia có thể đã rơi
+   khỏi máy. Ô này hỏi thẳng máy chủ bằng `taiHoaDonKhoang` — cùng đường mà tab
+   Thống kê dùng — nên với tới cả những cái đã rơi.
+
+   Gõ nguyên mã QCH… thì KHÔNG cần chọn ngày: ngày nằm sẵn trong mã. Đây là
+   đường dùng nhiều nhất (khách chìa tờ hóa đơn ra), nên nó phải là đường ngắn
+   nhất. Còn lại thì lọc theo số bàn trong khoảng ngày đang chọn.
+
+   Chờ 400ms trước khi gọi: gõ 13 ký tự mã hóa đơn mà mỗi ký tự một lượt tải cả
+   ngày về thì vừa chậm vừa tốn.                                              */
+let timHen = null;
+
+function timHoaDon(){
+  clearTimeout(timHen);
+  timHen = setTimeout(chayTim, 400);
+}
+
+async function chayTim(){
+  const q = String(el('btMa')?.value ?? '').trim().toUpperCase();
+  const maDay = /^QCH\d{10}$/.test(q) ? q : null;
+
+  // Mã đủ dạng thì ngày lấy từ chính nó; ô ngày lúc đó chỉ là trang trí.
+  let tu = el('btTu')?.value || '';
+  let den = el('btDen')?.value || '';
+  if (maDay){
+    const d = `20${maDay.slice(3,5)}-${maDay.slice(5,7)}-${maDay.slice(7,9)}`;
+    tu = den = d;
+  } else if (!q){
+    billTim = { dang: false, ket: null, note: '' };
+    return renderBillList();
+  } else if (!tu || !den){
+    billTim = { dang: false, ket: null, note: 'Chọn khoảng ngày để tìm theo số bàn' };
+    return renderBillList();
+  }
+
+  const lan = ++timLan;
+  billTim = { dang: true, ket: billTim.ket, note: 'Đang hỏi máy chủ…' };
+  renderBillList();
+
+  const list = await taiHoaDonKhoang(tu, den);
+  if (lan !== timLan) return;            // người dùng đã gõ tiếp, bỏ kết quả cũ
+
+  if (!list){
+    billTim = { dang: false, ket: [], note: 'Không tải được — kiểm tra mạng rồi thử lại' };
+    return renderBillList();
+  }
+
+  const ket = maDay
+    ? list.filter(b => (b.code || b.key) === maDay)
+    : list.filter(b => String(b.table ?? '') === q || String(b.code ?? '').includes(q));
+
+  billTim = { dang: false, ket,
+    note: `${tu === den ? dmy(tu) : dmy(tu) + ' → ' + dmy(den)} · ${list.length} hóa đơn trong kỳ` };
+  renderBillList();
+}
+let timLan = 0;
+
 function renderBillList(){
   const box = el('posBillList'); if (!box) return;
-  const bills = [...data.bills].sort((a,b) => (b.createdAt||0)-(a.createdAt||0));
-  const unpaid = bills.filter(b => b.status !== 'paid').length;
-  const noteEl = el('posBillNote');
-  if (noteEl) noteEl.textContent = bills.length ? `${bills.length} hóa đơn · ${unpaid} chưa thanh toán` : '';
+
+  const unpaid = data.bills.filter(b => b.status !== 'paid').length;
   const vcBill = el('vcBill');
   if (vcBill) vcBill.textContent = unpaid || '';
+  const vcCho = el('vcCho');
+  if (vcCho) vcCho.textContent = unpaid || '';
+  [...(el('posBillLoc')?.children ?? [])].forEach(b => b.classList.toggle('active', b.dataset.l === billLoc));
+  el('posBillTim')?.classList.toggle('hide', billLoc !== 'tim');
+  if (billLoc === 'tim' && el('btNote')) el('btNote').textContent = billTim.note;
 
-  if (!bills.length){
-    box.innerHTML = `<div class="empty"><div class="ic">💳</div>
-      <h3>Chưa có hóa đơn</h3><p>Bấm “Tạo hóa đơn” để xuất QR thanh toán.</p></div>`;
+  const { list, cu } = locBill();
+  const noteEl = el('posBillNote');
+  if (noteEl) noteEl.textContent =
+    billLoc === 'tim' ? (billTim.dang ? 'Đang tìm…' : `${list.length} hóa đơn tìm thấy`)
+    : billLoc === 'cho' ? `${unpaid} hóa đơn chưa thanh toán`
+    // Cộng cả phần "còn treo từ trước" vào con số này, kẻo đếm 1 mà nhìn thấy 2.
+    : `Phiên hôm nay: ${list.length} hóa đơn${cu.length ? ` · ${cu.length} còn treo` : ''}`;
+
+  if (!list.length && !cu.length){
+    box.innerHTML = rong();
     return;
   }
 
-  box.innerHTML = bills.map(b => {
+  box.innerHTML =
+    (list.length ? list.map(the).join('') : `<div class="empty" style="padding:26px 10px">
+        <div class="ic">✅</div><p>${billLoc === 'cho'
+          ? 'Không còn hóa đơn nào chờ trả tiền'
+          : 'Phiên này chưa có hóa đơn nào'}</p></div>`)
+    + (cu.length ? `<div class="bill-nhom canh">⚠️ Còn treo từ phiên trước — tiền chưa vào két</div>`
+                 + cu.map(the).join('') : '');
+
+  function rong(){
+    if (billLoc === 'tim') return `<div class="empty"><div class="ic">🔍</div>
+      <h3>${billTim.ket ? 'Không tìm thấy hóa đơn nào' : 'Tra cứu hóa đơn cũ'}</h3>
+      <p>${billTim.ket ? 'Thử nới khoảng ngày, hoặc dán nguyên mã QCH…'
+        : 'Gõ mã hóa đơn, hoặc chọn khoảng ngày rồi gõ số bàn. Tìm thẳng trên máy chủ nên với tới cả hóa đơn cũ.'}</p></div>`;
+    return `<div class="empty"><div class="ic">💳</div>
+      <h3>Chưa có hóa đơn</h3><p>Bấm “Tạo hóa đơn” để xuất QR thanh toán.</p></div>`;
+  }
+
+  function the(b){
+    return gonDuoc(b) ? dongGon(b) : theDayDu(b);
+  }
+
+  function dongGon(b){
+    const gio = b.createdAt ? new Date(b.createdAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'}) : '';
+    const soLy = (b.items || []).reduce((s, i) => s + (Number(i.qty) || 0), 0);
+    return `<button class="bill-gon" data-bill-mo="${esc(b.code || '')}">
+      <div class="g1">
+        <div class="gt">Bàn ${esc(b.table)} · ${esc(b.code || '')}</div>
+        <div class="gs">${gio} · ${soLy} ly · ${esc(CACH_TRA[b.payMethod] || 'đã thu')}${
+          b.discount ? ` · giảm ${b.discount}%` : ''}</div>
+      </div>
+      <div class="gv">${money(b.total)}</div>
+      <div class="gc">›</div>
+    </button>`;
+  }
+
+  function theDayDu(b){
     const paid   = b.status === 'paid';
     const daTra  = Number(b.paidAmount) || 0;
     const thieu  = Math.max(0, (Number(b.total)||0) - daTra);
@@ -1108,10 +1309,11 @@ function renderBillList(){
     const timeStr = b.createdAt ? new Date(b.createdAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'}) : '';
 
     return `<div class="bill-card ${paid ? 'paid' : ''}">
-      <div class="bill-head">
+      <div class="bill-head"${paid ? ` data-bill-gon="${esc(b.code || '')}" style="cursor:pointer"` : ''}>
         <span class="tbl">Bàn ${esc(b.table)}</span>
         <span class="time">${timeStr}${b.code ? ' · ' + esc(b.code) : ''}</span>
         <span class="bill-status ${paid ? 'paid' : 'unpaid'}">${paid ? '✅ Đã thanh toán' : '⏳ Chưa thanh toán'}</span>
+        ${paid ? '<span style="color:var(--ink-3);font-size:13px">⌃</span>' : ''}
       </div>
       <div class="bill-items">
         ${(b.items||[]).map(i => `<div class="bill-row">
@@ -1166,7 +1368,7 @@ function renderBillList(){
           : `<button class="btn danger" data-bill-del="${b.code}">🗑</button>`}
       </div>
     </div>`;
-  }).join('');
+  }
 }
 
 /* ─────────────────── in hóa đơn ───────────────────

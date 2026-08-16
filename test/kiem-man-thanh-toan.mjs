@@ -195,9 +195,21 @@ console.log('\nMàn thanh toán trong quán\n');
   await page.evaluate((m) => window.__db.traTien(m), ma);
   await page.waitForTimeout(400);
 
-  bao(await page.locator('.bill-card.paid').count() === 1, 'tiền về -> thẻ tự đổi sang đã thanh toán');
+  // Hóa đơn đã trả thu về một dòng gọn. Chạm mới bung ra thẻ đầy đủ.
+  bao(await page.locator('.bill-gon').count() === 1, 'tiền về -> hóa đơn thu về một dòng gọn');
+  bao(await page.locator('.bill-card').count() === 0, 'và không còn tấm thẻ đầy đủ nào chiếm chỗ');
+  const gon = (await page.locator('.bill-gon').innerText()).replace(/\n+/g, ' ');
+  bao(gon.includes(ma) && gon.includes('66.000'),
+      `dòng gọn vẫn đủ mã và số tiền để lướt mắt (thấy "${gon}")`);
+
+  await page.locator('.bill-gon').click();
+  await page.waitForTimeout(250);
+  bao(await page.locator('.bill-card.paid').count() === 1, 'chạm vào -> bung ra thẻ đã thanh toán đầy đủ');
   bao((await page.locator('.bill-note.ok').innerText()).includes('SePay'),
       'ghi rõ là SePay tự nhận, không phải người bấm');
+  await page.locator('.bill-head[data-bill-gon]').click();
+  await page.waitForTimeout(250);
+  bao(await page.locator('.bill-gon').count() === 1, 'chạm lần nữa -> thu lại như cũ');
   bao(await page.locator('.tbtn[data-t="3"]').getAttribute('data-tt') === 'daTra',
       'bàn chuyển sang đã trả');
 
@@ -426,10 +438,12 @@ console.log('\nMàn thanh toán trong quán\n');
   await page.waitForTimeout(250);
   await page.locator('#shFoot .btn.solid').click();
   await page.waitForTimeout(600);
-  bao(await page.locator('.bill-card.paid').count() === 1, 'thu tiền mặt -> hóa đơn sang ĐÃ thanh toán');
+  bao(await page.locator('.bill-gon').count() === 1, 'thu tiền mặt -> hóa đơn sang ĐÃ thanh toán');
   bao(daGuiTK.some(t => t.ma === ma && !t.huy && t.items?.length),
       `chốt tiền -> báo số ly về sổ Bán chạy (thấy ${JSON.stringify(daGuiTK)})`);
 
+  await page.locator('.bill-gon').click();       // bung ra để tới được nút 🗑
+  await page.waitForTimeout(250);
   const nutXoa = page.locator('[data-bill-del]');
   bao(!(await nutXoa.getAttribute('class')).includes('danger'),
       'hóa đơn đã trả -> nút 🗑 thôi màu đỏ, không mời gọi một việc đang bị chặn');
@@ -480,6 +494,103 @@ console.log('\nMàn thanh toán trong quán\n');
   bao(!!banSao, 'có bản sao trong billsXoa/ — bản sao rẻ hơn một buổi tối đi dò');
   bao(banSao?.total === 36000, `bản sao giữ đủ số tiền (thấy ${banSao?.total})`);
   bao('xoaLuc' in (banSao || {}), 'bản sao ghi lúc xóa');
+
+  bao(!loi.length, `không có lỗi JS${loi.length ? ': ' + loi[0] : ''}`);
+  await ctx.close();
+}
+
+/* ── 9. lọc danh sách hóa đơn + tra cứu hóa đơn cũ ───────────────────────
+
+   Màn này từng vẽ thẳng cả 200 hóa đơn gần nhất, mỗi cái một tấm thẻ đầy đủ.
+   Hai hậu quả: cuộn dài vô tận, và hóa đơn đang chờ trả tiền chìm nghỉm giữa
+   đám đã xong. Mà quá 200 thì hóa đơn cũ biến mất hẳn khỏi app.               */
+{
+  const { page, ctx, loi } = await mo();
+
+  const ma = await page.evaluate(() => {
+    const nay = new Date();
+    const ymd = (d) => d.toISOString().slice(0, 10);
+    const MA = (d, n) => 'QCH' + ymd(d).slice(2).replace(/-/g, '') + String(n).padStart(4, '0');
+    const homQua = new Date(nay.getTime() - 864e5);
+    const r = {
+      naySach: MA(nay, 1),      // hôm nay, đã trả
+      treo:    MA(nay, 2),      // CÒN TREO từ phiên trước
+      cu:      MA(homQua, 3),   // hôm qua, chỉ tra cứu mới thấy
+    };
+    // Mốc phiên là 4h sáng, nên "trước phiên" chắc chắn là 26 giờ trước.
+    const truocPhien = Date.now() - 26 * 3600e3;
+    window.__db.ghi('bills/' + r.naySach, {
+      code: r.naySach, table: 3, status: 'paid', subtotal: 60000, total: 60000,
+      paidAmount: 60000, payMethod: 'tienmat', paidBy: 'nguoi',
+      items: [{ name: 'Espresso', qty: 2, price: 30000 }],
+      createdAt: Date.now() - 3600e3, tinhToiLuc: Date.now() - 3600e3,
+    });
+    window.__db.ghi('bills/' + r.treo, {
+      code: r.treo, table: 7, status: 'unpaid', subtotal: 25000, total: 25000,
+      paidAmount: 0, items: [{ name: 'Bạc xỉu', qty: 1, price: 25000 }],
+      createdAt: truocPhien, tinhToiLuc: truocPhien,
+    });
+    window.__db.ghi('bills/' + r.cu, {
+      code: r.cu, table: 9, status: 'paid', subtotal: 44000, total: 44000,
+      paidAmount: 44000, payMethod: 'chuyenkhoan', paidBy: 'sepay',
+      items: [{ name: 'Trà đào cam sả', qty: 1, price: 44000 }],
+      createdAt: truocPhien - 3600e3, tinhToiLuc: truocPhien - 3600e3,
+    });
+    return r;
+  });
+  await page.waitForTimeout(400);
+  await page.locator('#posView button[data-v="bill"]').click();
+  await page.waitForTimeout(400);
+
+  /* mặc định: phiên hôm nay */
+  bao(await page.locator('#posBillLoc button[data-l="nay"]').getAttribute('class') === 'active',
+      'mở ra là đứng ở "Hôm nay" — việc đang làm, không phải kho lưu trữ');
+  let txt = await page.locator('#posBillList').innerText();
+  bao(txt.includes(ma.naySach), 'thấy hóa đơn của phiên hôm nay');
+  bao(!txt.includes(ma.cu), 'KHÔNG thấy hóa đơn hôm qua — đó là thứ khiến danh sách dài mãi');
+
+  /* hóa đơn còn treo từ phiên trước KHÔNG được biến mất: tiền chưa vào két */
+  bao(txt.includes(ma.treo),
+      'hóa đơn CHƯA TRẢ từ phiên trước vẫn hiện — biến mất là mất tiền im lặng');
+  bao(/còn treo từ phiên trước/i.test(txt),      // CSS in hoa cả dòng
+      `và được tách riêng, có nhắc hẳn ra (thấy "${txt.replace(/\n+/g,' | ').slice(0,200)}")`);
+
+  /* hóa đơn đã trả gọn một dòng, chưa trả thì vẫn đầy đủ */
+  bao(await page.locator('.bill-gon').count() === 1, 'hóa đơn đã trả: một dòng');
+  bao(await page.locator('.bill-card').count() === 1, 'hóa đơn chưa trả: giữ nguyên thẻ đầy đủ có QR');
+  bao(await page.locator('.bill-card .bill-qr img').count() === 1,
+      'QR chuyển khoản vẫn nằm đó — đó là lý do tấm thẻ tồn tại');
+
+  /* chờ trả */
+  await page.locator('#posBillLoc button[data-l="cho"]').click();
+  await page.waitForTimeout(250);
+  txt = await page.locator('#posBillList').innerText();
+  bao(txt.includes(ma.treo) && !txt.includes(ma.naySach),
+      '"Chờ trả" chỉ còn hóa đơn chưa thu tiền');
+  bao((await page.locator('#vcCho').innerText()) === '1', 'chip "Chờ trả" đếm sẵn số hóa đơn');
+
+  /* tra cứu hóa đơn cũ bằng mã — với tới cả cái đã rơi khỏi mốc 200 */
+  await page.locator('#posBillLoc button[data-l="tim"]').click();
+  await page.waitForTimeout(250);
+  bao(!(await page.locator('#posBillTim').getAttribute('class')).includes('hide'),
+      'bấm Tìm thì hiện ô tra cứu');
+
+  await page.locator('#btMa').fill(ma.cu);
+  await page.waitForTimeout(1200);            // 400ms chờ gõ + một lượt hỏi máy chủ
+  txt = await page.locator('#posBillList').innerText();
+  bao(txt.includes(ma.cu),
+      `dán nguyên mã QCH… là ra hóa đơn hôm qua, không phải chọn ngày (thấy "${txt.replace(/\n+/g,' | ').slice(0,160)}")`);
+  bao(!txt.includes(ma.naySach), 'và chỉ ra đúng cái được hỏi');
+
+  await page.locator('#btMa').fill('KHONGCOMA');
+  await page.waitForTimeout(1200);
+  bao((await page.locator('#posBillList').innerText()).includes('Không tìm thấy'),
+      'gõ bừa thì nói không tìm thấy, không im lặng để màn trống');
+
+  await page.locator('#posBillLoc button[data-l="nay"]').click();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'test/anh-hoa-don-loc.png' });
+  console.log('  ✓ test/anh-hoa-don-loc.png');
 
   bao(!loi.length, `không có lỗi JS${loi.length ? ': ' + loi[0] : ''}`);
   await ctx.close();
