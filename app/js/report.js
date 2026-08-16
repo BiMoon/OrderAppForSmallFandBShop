@@ -14,6 +14,8 @@ import {
   data, onData, resolvePrice, toast, store, mocCua, taiHoaDonKhoang
 } from './core.js';
 import { ganThucThu, congSo, congTheoCachTra, CACH_TRA } from './thucThu.js';
+import { csvS1a } from './soS1a.js';
+import { QUAN } from './quanInfo.js';
 
 let mode   = store.get('rp.mode', 'day');    // day | month | year | range | all
 let metric = 'rev';
@@ -150,7 +152,13 @@ function shell(){
     <div class="card-body" id="rpCxList"></div>
   </div>
 
-  <button class="btn block mt16" id="rpCsv">⬇ Xuất CSV</button>`;
+  <button class="btn block mt16" id="rpCsv">⬇ Xuất CSV doanh thu theo món</button>
+  <button class="btn block mt8" id="rpS1a">📒 Xuất sổ S1a-HKD (nộp thuế)</button>
+  <p style="color:var(--ink-3);font-size:12.5px;line-height:1.5;margin-top:8px">
+    Sổ S1a-HKD ghi theo <b>từng hoá đơn</b>, xếp theo ngày, cộng dồn theo tháng và quý.
+    Chỉ gồm doanh thu <b>bán tại quán</b> — đơn đặt online nằm ở hệ thống khác, phải cộng
+    thêm trước khi nộp.
+  </p>`;
 }
 
 export function mountReport(root){
@@ -186,6 +194,7 @@ export function mountReport(root){
   ['rpDate','rpMonth','rpYear','rpFrom','rpTo'].forEach(id => el(id).onchange = render);
   el('rpQ').oninput = e => { query = e.target.value.trim().toLowerCase(); render(); };
   el('rpCsv').onclick = csv;
+  el('rpS1a').onclick = xuatS1a;
 
   onData(w => {
     // 'bills' cũng phải nghe: thu ngân bấm "đã trả" là hóa đơn đó mới bắt đầu
@@ -453,6 +462,33 @@ function render(){
   last = { list, tQty, tRev, from, to, cxList, cxL, so, tra };
 }
 
+/* ─────────────────── sổ S1a-HKD ─────────────────── */
+
+/**
+ * Xuất Sổ doanh thu bán hàng hoá, dịch vụ — Mẫu S1a-HKD.
+ *
+ * Khác hẳn nút "Xuất CSV" bên trên: cái kia tổng hợp theo MÓN để biết bán gì
+ * chạy, cái này ghi theo THỜI GIAN để nộp cho cơ quan thuế. Giữ cả hai.
+ *
+ * Dựng từ đúng danh sách hoá đơn mà màn hình đang xem, nên kỳ báo cáo chọn ở
+ * trên là kỳ của sổ.
+ */
+function xuatS1a(){
+  if (!last) return toast('Chưa có dữ liệu để xuất','err');
+  const { from, to } = last;
+  const bills = hoaDonKy(from, to);
+
+  if (dangTaiHoaDon){
+    // Xuất sổ thuế bằng 200 hoá đơn tạm là ra một con số thiếu mà trông như đủ.
+    return toast('Đang tải hoá đơn của kỳ — chờ một chút rồi bấm lại', 'err');
+  }
+
+  const { noiDung, ten, tong, soChungTu } = csvS1a(bills, QUAN, { from, to });
+  if (!soChungTu) return toast('Kỳ này chưa có hoá đơn nào đã thanh toán','err');
+
+  taiVe(new Blob([noiDung], { type:'text/csv;charset=utf-8;' }), ten, `Sổ S1a-HKD · ${money(tong)}`);
+}
+
 /* ─────────────────── xuất CSV ─────────────────── */
 function csv(){
   if (!last || !last.list.length) return toast('Không có dữ liệu để xuất','err');
@@ -489,17 +525,26 @@ function csv(){
   }
   const blob = new Blob(['﻿' + lines.join('\r\n')], { type:'text/csv;charset=utf-8;' });
   const name = 'doanhthu-' + (from||'tatca') + (to && to!==from ? '_'+to : '') + '.csv';
+  taiVe(blob, name, 'Đã xuất ' + list.length + ' dòng');
+}
 
-  // Trên Android, chia sẻ file dễ dùng hơn là tải về
-  const file = window.File ? new File([blob], name, { type:'text/csv' }) : null;
+/**
+ * Đưa một tệp tới tay người dùng.
+ *
+ * Trên Android, chia sẻ dễ dùng hơn tải về — tệp tải về rơi vào thư mục
+ * Downloads rồi phải đi tìm, còn chia sẻ thì gửi thẳng sang Zalo cho kế toán.
+ * Máy nào không có thì rơi về cách tải bình thường.
+ */
+function taiVe(blob, name, xong){
+  const file = window.File ? new File([blob], name, { type: blob.type }) : null;
   if (file && navigator.canShare && navigator.canShare({ files:[file] })){
-    navigator.share({ files:[file], title:'Báo cáo doanh thu' })
-      .then(()=>toast('Đã chia sẻ báo cáo','ok'))
+    navigator.share({ files:[file], title: name })
+      .then(()=>toast('Đã chia sẻ ' + name,'ok'))
       .catch(()=>{});
     return;
   }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = name; a.click();
   URL.revokeObjectURL(a.href);
-  toast('Đã xuất ' + list.length + ' dòng','ok');
+  toast(xong || ('Đã xuất ' + name), 'ok');
 }

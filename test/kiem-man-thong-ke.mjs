@@ -18,6 +18,9 @@ import { readFile } from 'node:fs/promises';
 import { existsSync, statSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { chromium } from 'playwright';
+import { QUAN } from '../app/js/quanInfo.js';
+
+const QUAN_MST = QUAN.maSoThue;
 
 import { FAKE_APP, FAKE_AUTH, FAKE_DB } from './gia-firebase.mjs';
 
@@ -90,6 +93,11 @@ async function dungCanh(page){
   await page.evaluate(() => {
     const nay = new Date().toISOString().slice(0, 10);
     const gio = Date.now();
+    // Mã hoá đơn PHẢI theo ngày hôm nay: màn Thống kê tải hoá đơn theo khoảng
+    // khoá, mà khoá là `QCH` + yymmdd. Ghi cứng một ngày là test xanh hôm viết
+    // rồi tự mục sau đó vài hôm, và triệu chứng ("chưa chốt hoá đơn") không hề
+    // chỉ về nguyên nhân.
+    const MA = (n) => 'QCH' + nay.slice(2).replace(/-/g, '') + String(n).padStart(4, '0');
     const h = (k, tbl, item, qty, price, tru) => window.__db.ghi('history/' + k, {
       table: tbl, item, quantity: qty, price,
       revenue: price * qty, completedDate: nay, timestamp: gio - tru,
@@ -102,15 +110,15 @@ async function dungCanh(page){
     h('h3', 5, 'Bạc xỉu', 2, 25000, 700000);
 
     // Hóa đơn bàn 3: giảm 50%, ĐÃ THANH TOÁN.
-    window.__db.ghi('bills/QCH2608140001', {
-      code: 'QCH2608140001', table: 3, status: 'paid',
+    window.__db.ghi('bills/' + MA(1), {
+      code: MA(1), table: 3, status: 'paid',
       subtotal: 100000, discount: 50, discAmt: 50000, total: 50000,
       paidAmount: 50000, payMethod: 'chuyenkhoan', paidBy: 'sepay',
       tinhToiLuc: gio - 700001, createdAt: gio - 700001, paidAt: gio - 690000,
     });
     // Hóa đơn bàn 5: không giảm, ĐÃ THANH TOÁN.
-    window.__db.ghi('bills/QCH2608140002', {
-      code: 'QCH2608140002', table: 5, status: 'paid',
+    window.__db.ghi('bills/' + MA(2), {
+      code: MA(2), table: 5, status: 'paid',
       subtotal: 50000, discount: 0, discAmt: 0, total: 50000,
       paidAmount: 50000, payMethod: 'tienmat', paidBy: 'nguoi',
       tinhToiLuc: gio - 600000, createdAt: gio - 600000, paidAt: gio - 590000,
@@ -184,10 +192,15 @@ console.log('\nTab Thống kê — giảm giá ở hóa đơn\n');
   await page.evaluate(() => {
     const nay = new Date().toISOString().slice(0, 10);
     const gio = Date.now();
+    // Mã hoá đơn PHẢI theo ngày hôm nay: màn Thống kê tải hoá đơn theo khoảng
+    // khoá, mà khoá là `QCH` + yymmdd. Ghi cứng một ngày là test xanh hôm viết
+    // rồi tự mục sau đó vài hôm, và triệu chứng ("chưa chốt hoá đơn") không hề
+    // chỉ về nguyên nhân.
+    const MA = (n) => 'QCH' + nay.slice(2).replace(/-/g, '') + String(n).padStart(4, '0');
     window.__db.ghi('history/h1', { table: 3, item: 'Espresso', quantity: 2, price: 20000,
       revenue: 40000, completedDate: nay, timestamp: gio - 900000 });
-    window.__db.ghi('bills/QCH2608140001', {
-      code: 'QCH2608140001', table: 3, status: 'unpaid',
+    window.__db.ghi('bills/' + MA(1), {
+      code: MA(1), table: 3, status: 'unpaid',
       subtotal: 40000, discount: 50, discAmt: 20000, total: 20000,
       paidAmount: 0, tinhToiLuc: gio - 800000, createdAt: gio - 800000,
     });
@@ -204,7 +217,10 @@ console.log('\nTab Thống kê — giảm giá ở hóa đơn\n');
       `biểu ngữ nói rõ 40.000₫ chưa chốt hóa đơn (thấy "${bn.replace(/\n/g,' | ')}")`);
 
   /* thu ngân bấm "đã trả" -> số phải tụt xuống NGAY, không cần tải lại trang */
-  await page.evaluate(() => window.__db.traTien('QCH2608140001'));
+  await page.evaluate(() => {
+    const nay = new Date().toISOString().slice(0, 10);
+    window.__db.traTien('QCH' + nay.slice(2).replace(/-/g, '') + '0001');
+  });
   await page.waitForTimeout(900);
   bao(so(await page.locator('#rpRev').innerText()) === 20000,
       'bấm đã trả -> doanh thu tự về 20.000₫, không phải mở lại tab');
@@ -233,12 +249,86 @@ console.log('\nTab Thống kê — giảm giá ở hóa đơn\n');
   });
 
   bao(!!csv, 'bấm Xuất CSV có ra file');
+  if (process.env.DEBUG_CSV) {
+    console.log('\n--- CSV ---\n' + csv + '\n--- hết ---\n');
+    console.log(JSON.stringify(await page.evaluate(async () => {
+      const { cuaSoHoaDon, mocHoaDon } = await import('./js/thucThu.js');
+      const bills = Object.values(window.__db.store.bills || {});
+      const hs = Object.values(window.__db.store.history || {});
+      return {
+        bills: bills.map(b => ({ code: b.code, table: b.table, status: b.status, moc: mocHoaDon(b) })),
+        cuaSo: [...cuaSoHoaDon(bills)].map(([k, v]) => [k, v]),
+        rows: hs.slice(0, 3).map(h => ({ table: h.table, item: h.item, ts: h.timestamp, sentAt: h.sentAt })),
+        thu: (await import('./js/thucThu.js')).ganThucThu(
+          hs.map(h => ({ table: h.table, moc: h.timestamp, revenue: h.revenue })), bills)
+          .map(r => ({ t: r.table, hd: r.maHD, heSo: r.heSo, chuaChot: r.chuaChot, thuc: r.thucThu })),
+      };
+    }), null, 1));
+  }
   bao(/Doanh thu niem yet \(VND\),150000/.test(csv || ''), 'CSV có dòng doanh thu niêm yết 150000');
   bao(/Giam gia \(VND\),50000/.test(csv || ''), 'CSV có dòng giảm giá 50000');
   bao(/Doanh thu thuc thu \(VND\),100000/.test(csv || ''), 'CSV có dòng thực thu 100000');
   bao(/Espresso",2,20000,10000,40000,20000,20000,/.test(csv || ''),
       'dòng Espresso tách đủ: niêm yết 20000 / thực thu 10000 / giảm 20000');
   bao(/TONG CONG,6,,,150000,50000,100000,100.0/.test(csv || ''), 'dòng tổng cộng khớp');
+
+  bao(!loi.length, `không có lỗi JS${loi.length ? ': ' + loi[0] : ''}`);
+  await ctx.close();
+}
+
+/* ── sổ S1a-HKD ──────────────────────────────────────────────────────────────
+
+   Để RIÊNG một phiên trình duyệt, không ghép vào mục nào ở trên: bấm nút xuất
+   sổ kéo theo một lượt tải hoá đơn của kỳ rồi vẽ lại màn hình, và cái đó làm
+   nhiễu mọi khẳng định đứng sau nó trong cùng một phiên.                     */
+{
+  const { page, ctx, loi } = await mo();
+  await dungCanh(page);
+
+  const coNut = await page.locator('#rpS1a').count();
+  bao(coNut === 1, 'có nút xuất sổ S1a-HKD trên màn Thống kê');
+
+  if (coNut) {
+    // Chặn tải về, giữ lại nội dung tệp để soi.
+    await page.evaluate(() => {
+      window.__tep = null;
+      const goc = HTMLAnchorElement.prototype.click;
+      HTMLAnchorElement.prototype.click = function () {
+        if (this.download) { window.__tep = this.download; return; }
+        return goc.call(this);
+      };
+      // `navigator.share` có trên máy giả lập di động -> ép về đường tải file.
+      if (navigator.canShare) navigator.canShare = () => false;
+    });
+
+    await page.locator('#rpS1a').scrollIntoViewIfNeeded();
+    await page.locator('#rpS1a').click();
+    await page.waitForTimeout(500);
+
+    const ten = await page.evaluate(() => window.__tep);
+    bao(!!ten && /^so-S1a-HKD-.*\.csv$/.test(ten), `tệp xuất ra đúng tên: ${ten || 'KHÔNG TẢI'}`);
+
+    // Dựng lại nội dung sổ ngay trong trang, từ đúng hoá đơn màn hình đang xem.
+    const soi = await page.evaluate(async () => {
+      const { csvS1a } = await import('./js/soS1a.js');
+      const { QUAN } = await import('./js/quanInfo.js');
+      const bills = Object.values(window.__db.store.bills || {});
+      const { noiDung, soChungTu, tong } = csvS1a(bills, QUAN, { from: '2026-01-01', to: '2026-12-31' });
+      return { noiDung, soChungTu, tong };
+    });
+
+    bao(soi.noiDung.includes('Mẫu số S1a-HKD'), 'sổ ghi rõ tên mẫu');
+    bao(soi.noiDung.includes(QUAN_MST), `sổ có mã số thuế (${QUAN_MST})`);
+    bao(/chỉ gồm doanh thu BÁN TẠI QUÁN/i.test(soi.noiDung),
+      'sổ CẢNH BÁO là chỉ có doanh thu tại quán — thiếu doanh thu mà trông như đủ là tệ nhất');
+    bao(soi.noiDung.indexOf('BÁN TẠI QUÁN') < soi.noiDung.indexOf('Ngày, tháng ghi sổ'),
+      'cảnh báo nằm TRÊN bảng số, không nhét xuống cuối');
+    bao(/TỔNG CỘNG/.test(soi.noiDung), 'có dòng tổng cộng');
+    console.log(`     sổ dựng được: ${soi.soChungTu} chứng từ · tổng ${soi.tong.toLocaleString('vi-VN')}đ`);
+
+    await page.screenshot({ path: 'test/anh-thong-ke-s1a.png' });
+    console.log('  ✓ test/anh-thong-ke-s1a.png');
+  }
 
   bao(!loi.length, `không có lỗi JS${loi.length ? ': ' + loi[0] : ''}`);
   await ctx.close();
