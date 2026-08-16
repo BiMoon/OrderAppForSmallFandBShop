@@ -11,7 +11,8 @@
    ========================================================================== */
 import {
   el, esc, money, moneyShort, nf, ymd, addDays, dmy, slug, parsePrice,
-  data, onData, resolvePrice, toast, store, mocCua, taiHoaDonKhoang
+  data, onData, resolvePrice, toast, store, mocCua, taiHoaDonKhoang, taiHoaDonXoa,
+  khoiPhucHoaDon, sheet
 } from './core.js';
 import { ganThucThu, congSo, congTheoCachTra, CACH_TRA } from './thucThu.js';
 import { csvS1a } from './soS1a.js';
@@ -75,6 +76,13 @@ const CSS = `
 .cxr .n{flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cxr .rs{font-size:11px;color:var(--ink-3);margin-top:1px;font-weight:500}
 .cxr .v{flex:none;font-weight:700;color:var(--late);font-variant-numeric:tabular-nums}
+.xrow{display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid var(--line)}
+.xrow:last-child{border-bottom:0}
+.xrow .xi{flex:1;min-width:0}
+.xrow .xm{font-size:13.5px;font-weight:700;font-variant-numeric:tabular-nums;
+          overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.xrow .xs{font-size:11.5px;color:var(--ink-3);margin-top:2px;line-height:1.35}
+.xrow .xv{flex:none;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
 `;
 
 function shell(){
@@ -152,6 +160,12 @@ function shell(){
     <div class="card-body" id="rpCxList"></div>
   </div>
 
+  <div class="card hide" id="rpXoaCard">
+    <div class="card-head"><span class="card-title">Hóa đơn đã xóa</span>
+      <span class="card-note" id="rpXoaN"></span></div>
+    <div class="card-body" id="rpXoaList"></div>
+  </div>
+
   <button class="btn block mt16" id="rpCsv">⬇ Xuất CSV doanh thu theo món</button>
   <button class="btn block mt8" id="rpS1a">📒 Xuất sổ S1a-HKD (nộp thuế)</button>
   <p style="color:var(--ink-3);font-size:12.5px;line-height:1.5;margin-top:8px">
@@ -195,11 +209,17 @@ export function mountReport(root){
   el('rpQ').oninput = e => { query = e.target.value.trim().toLowerCase(); render(); };
   el('rpCsv').onclick = csv;
   el('rpS1a').onclick = xuatS1a;
+  el('rpXoaList').onclick = e => {
+    const b = e.target.closest('[data-xoa-phuc]');
+    if (b) khoiPhucSheet(b.dataset.xoaPhuc);
+  };
 
   onData(w => {
     // 'bills' cũng phải nghe: thu ngân bấm "đã trả" là hóa đơn đó mới bắt đầu
     // được trừ giảm giá. Bỏ kỳ đã tải để lần vẽ tới nạp lại bản mới.
-    if (w === 'bills'){ kyDaTai = null; dangTaiHoaDon = null; render(); return; }
+    // Xóa một hóa đơn cũng bắn 'bills', nên bỏ luôn danh sách đã xóa — hóa đơn
+    // vừa xóa mà không thấy trong thẻ thì người ta tưởng bản sao không có.
+    if (w === 'bills'){ kyDaTai = null; dangTaiHoaDon = null; xoaDaTai = null; render(); return; }
     if (w === 'history' || w === 'cancelled' || w === 'menu'){ years(); render(); }
   });
   render();
@@ -459,7 +479,106 @@ function render(){
     : `<div class="empty" style="padding:24px 10px"><div class="ic">✅</div>
         <p>Không có món nào bị hủy trong kỳ này</p></div>`;
 
+  veHoaDonXoa();
+
   last = { list, tQty, tRev, from, to, cxList, cxL, so, tra };
+}
+
+/* ─────────────────── hóa đơn đã xóa ───────────────────
+
+   Xóa một hóa đơn là chuyện im lặng: bàn tính lại từ đầu, sổ thu hụt đúng bằng
+   số ấy, và không còn dòng nào giải thích. `core.xoaHoaDon` đã chép sang
+   `billsXoa/` trước khi xóa — chỗ này là cái cửa sổ duy nhất nhìn vào bản sao
+   đó, và không có cửa sổ thì bản sao chỉ là dữ liệu chết.
+
+   Thẻ này ẨN khi kỳ không có hóa đơn nào bị xóa, tức là gần như luôn ẩn. Một
+   thẻ "0 hóa đơn" đứng mãi ở đó thì mắt quen dần, rồi hôm nó khác 0 cũng không
+   ai thấy. */
+let xoaDaTai = null;        // { khoa, list }
+let dangTaiXoa = null;
+
+/** Ngày tạo suy từ mã: `QCH` + yymmdd + số thứ tự. */
+function ngayTuMa(code){
+  const m = /^QCH(\d{2})(\d{2})(\d{2})\d{4}$/.exec(String(code || ''));
+  return m ? `20${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
+/** `1723712345678` -> `14/08 lúc 21:39`. Rỗng nếu không có mốc. */
+function lucVN(ts){
+  if (!Number.isFinite(Number(ts))) return '';
+  const d = new Date(Number(ts));
+  const h = (n) => String(n).padStart(2, '0');
+  return `${h(d.getDate())}/${h(d.getMonth() + 1)} lúc ${h(d.getHours())}:${h(d.getMinutes())}`;
+}
+
+function veHoaDonXoa(){
+  const [from, to] = range();
+  const khoa = `${from || ''}|${to || ''}`;
+
+  if (!xoaDaTai || xoaDaTai.khoa !== khoa){
+    // Giữ thẻ ẩn trong lúc tải. Hiện "đang tải" rồi biến mất là nhấp nháy vô
+    // ích cho một thẻ hầu như luôn rỗng.
+    el('rpXoaCard').classList.add('hide');
+    if (dangTaiXoa === khoa) return;
+    dangTaiXoa = khoa;
+    taiHoaDonXoa(from, to).then(list => {
+      if (dangTaiXoa !== khoa) return;   // người dùng đã đổi kỳ
+      dangTaiXoa = null;
+      xoaDaTai = { khoa, list: list || [] };
+      veHoaDonXoa();
+    });
+    return;
+  }
+
+  // Lọc lại ở máy: `taiHoaDonXoa` nới mỗi đầu một ngày theo khóa.
+  const list = xoaDaTai.list
+    .filter(b => inR(ngayTuMa(b.code || b.key), from, to))
+    .sort((a, b) => (Number(b.xoaLuc) || 0) - (Number(a.xoaLuc) || 0));
+
+  el('rpXoaCard').classList.toggle('hide', !list.length);
+  if (!list.length) return;
+
+  const tien = list.reduce((s, b) => s + (Number(b.total) || 0), 0);
+  el('rpXoaN').textContent = `${list.length} hóa đơn · ${money(tien)}`;
+  el('rpXoaList').innerHTML = list.map(b => {
+    const ma  = esc(b.code || b.key || '—');
+    const ban = b.table ? `Bàn ${esc(String(b.table))}` : 'Không rõ bàn';
+    const ai  = b.xoaBoi ? esc(String(b.xoaBoi)) : 'không rõ ai';
+    const luc = lucVN(b.xoaLuc);
+    const daTra = b.status === 'paid';
+    return `<div class="xrow">
+      <div class="xi">
+        <div class="xm">${ma}${daTra ? ' <span class="flag">đã thu tiền</span>' : ''}</div>
+        <div class="xs">${ban} · ${esc(String(b.items?.length ?? 0))} dòng<br>
+          ${ai}${luc ? ' · ' + luc : ''}</div>
+      </div>
+      <div class="xv">${money(Number(b.total) || 0)}
+        <div><button class="btn sm mt8" data-xoa-phuc="${ma}">Dựng lại</button></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function khoiPhucSheet(code){
+  const b = (xoaDaTai?.list || []).find(x => (x.code || x.key) === code);
+  sheet({
+    title: 'Dựng lại hóa đơn ' + code + '?',
+    desc: 'Hóa đơn quay về danh sách ở tab Hóa đơn, trạng thái CHƯA THANH TOÁN — '
+        + 'kể cả bản cũ đã thu tiền, vì không ai xác nhận lại khoản đó.'
+        + (b?.table ? ` Nếu bàn ${b.table} đã được tính lại sau khi xóa thì sẽ thành hai hóa đơn cho cùng một mâm món.` : ''),
+    actions:[
+      { label: 'Thôi' },
+      { label: 'Dựng lại', cls: 'solid', onClick(){
+          khoiPhucHoaDon(code)
+            .then(() => toast('Đã dựng lại ' + code + ' — xem ở tab Hóa đơn', 'ok'))
+            .catch(e => {
+              console.error(e);
+              toast(e?.choNguoiDung ? e.message : 'Không dựng lại được', 'err');
+            });
+        }
+      }
+    ]
+  });
 }
 
 /* ─────────────────── sổ S1a-HKD ─────────────────── */

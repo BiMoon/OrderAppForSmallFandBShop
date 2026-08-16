@@ -579,15 +579,25 @@ export function moLaiHoaDon(code){
 /**
  * Xóa hóa đơn.
  *
- * Chép sang `billsXoa/` TRƯỚC khi xóa. Một cú bấm nhầm vào hóa đơn đã thu tiền
- * là mất dấu khoản tiền đó vĩnh viễn, và bàn tính lại từ đầu — cảnh báo thì có
- * mà đường lùi thì không. Bản sao rẻ hơn nhiều so với một buổi tối đi dò.
+ * **Từ chối hóa đơn đã thanh toán.** Xóa nó là mất dấu khoản tiền đã nhận: sổ
+ * thu trong ngày hụt đi đúng bằng số ấy mà không còn dòng nào giải thích, và
+ * số ly thì vẫn nằm trong sổ "Bán chạy". Đường đúng là `moLaiHoaDon` trước —
+ * hàm đó đưa hóa đơn về chưa thanh toán và bên gọi gỡ luôn số ly. Chặn ở đây
+ * chứ không chỉ ở màn hình, vì màn hình có nhiều lối vào mà tiền thì chỉ có
+ * một.
  *
- * Chép hỏng (mất mạng, thiếu quyền) thì **không xóa**: thà để lại một hóa đơn
- * thừa còn hơn xóa mà không có bản sao.
+ * Chép sang `billsXoa/` TRƯỚC khi xóa: bấm nhầm thì cảnh báo có mà đường lùi
+ * thì không, và bản sao rẻ hơn nhiều so với một buổi tối đi dò. Chép hỏng (mất
+ * mạng, thiếu quyền) thì **không xóa** — thà để lại một hóa đơn thừa còn hơn
+ * xóa mà không có bản sao.
  */
 export async function xoaHoaDon(code){
   const b = data.bills.find(x => x.key === code || x.code === code);
+  if (b?.status === 'paid') {
+    const e = new Error('Hóa đơn đã thanh toán — bấm "Mở lại" trước rồi mới xóa được');
+    e.choNguoiDung = true;   // câu này đọc được, đừng thay bằng câu lỗi mặc định
+    throw e;
+  }
   if (b) {
     await set(ref(db, 'billsXoa/' + code), { ...b, ...dauVet('xoa') });
   }
@@ -622,6 +632,66 @@ export function taiHoaDonKhoang(tuNgay, denNgay){
 
   boNhoHoaDon.set(khoa, p);
   return p;
+}
+
+/**
+ * Hóa đơn ĐÃ XÓA trong một khoảng ngày.
+ *
+ * `billsXoa/` khóa theo đúng mã hóa đơn nên cắt được bằng khóa y như `bills/`.
+ * Không nghe `onValue` — đây là danh sách để đối chiếu khi thấy sổ lệch, mỗi
+ * lần mở tab Thống kê tải lại một lần là đủ; giữ một listener sống suốt phiên
+ * cho một nhánh gần như luôn rỗng thì chỉ tốn.
+ *
+ * Không có bộ đệm, cố ý: vừa xóa một hóa đơn xong mà mở Thống kê ra không thấy
+ * nó thì người dùng sẽ tưởng bản sao không có, rồi đi tìm bằng cách khác.
+ */
+export function taiHoaDonXoa(tuNgay, denNgay){
+  const r = ref(db, 'billsXoa');
+  const q = (tuNgay && denNgay)
+    ? query(r, orderByKey(),
+        startAt('QCH' + vnDateKey(addDays(new Date(tuNgay + 'T00:00:00'), -1)) + '0000'),
+        endAt('QCH' + vnDateKey(addDays(new Date(denNgay + 'T00:00:00'), 1)) + '9999'))
+    : r;
+
+  return get(q)
+    .then(snap => snapToArray(snap).map(({ key, val }) => ({ key, ...val })))
+    .catch(err => { console.error(err); return null; });
+}
+
+/**
+ * Dựng lại một hóa đơn đã xóa, đúng mã cũ.
+ *
+ * Từ chối nếu `bills/{code}` đã có: xóa xong rồi tính lại bàn ấy là chuyện
+ * thường, và ghi đè hóa đơn đang sống bằng một bản cũ là làm mất một khoản thu
+ * thật để cứu một cú bấm nhầm.
+ *
+ * Trả về trạng thái **chưa thanh toán** dù bản cũ đã trả. Hiện tại xóa hóa đơn
+ * đã trả bị chặn nên nhánh này chỉ chạm tới bản sao cũ, nhưng nếu có thì đánh
+ * dấu "đã thu" cho một khoản tiền không ai xác nhận lại là tệ hơn bắt thu ngân
+ * bấm thu một lần nữa.
+ *
+ * Giữ nguyên `billsXoa/{code}` — bản sao là sổ, không phải thùng rác.
+ */
+export async function khoiPhucHoaDon(code){
+  const cu = (await get(ref(db, 'billsXoa/' + code))).val();
+  if (!cu) {
+    const e = new Error('Không tìm thấy bản sao của hóa đơn này');
+    e.choNguoiDung = true; throw e;
+  }
+  if ((await get(ref(db, 'bills/' + code))).exists()) {
+    const e = new Error('Mã ' + code + ' đang có hóa đơn sống — không ghi đè');
+    e.choNguoiDung = true; throw e;
+  }
+
+  const { key, xoaBoi, xoaLuc, ...b } = cu;
+  await set(ref(db, 'bills/' + code), {
+    ...b,
+    code,
+    status: 'unpaid', payMethod: null, paidBy: null, paidAt: null, paidAmount: 0,
+    khachDua: null, tienThoi: null,
+    ...dauVet('khoiPhuc'),
+  });
+  return code;
 }
 
 /* ─────────────────── giữ màn hình không tắt (cho quầy pha chế) ─────────────────── */

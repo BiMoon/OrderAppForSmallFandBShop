@@ -19,7 +19,7 @@ import { TUY_CHON_NHANH, themVaoGio, suaMoTa, moTaMon } from './gioHang.js';
 import { inNhan, cauHinhNhan, luuCauHinhNhan } from './inNhan.js';
 import { choMayChu, loiBao } from './hangCho.js';
 import { goiYTien, tienThoi, chiaTo } from './tienMat.js';
-import { baoBanTaiQuan } from './thongKeQuan.js';
+import { baoBanTaiQuan, huyBanTaiQuan } from './thongKeQuan.js';
 
 let table    = store.get('pos.table', 1);
 let tab      = 'pad';          // pad | menu
@@ -518,7 +518,7 @@ function bind(){
     const m = e.target.closest('[data-bill-manual]');
     if (m) return traTienSheet(m.dataset.billManual, 'chuyenkhoan');
     const u = e.target.closest('[data-bill-unpay]');
-    if (u) return moLaiHoaDon(u.dataset.billUnpay)
+    if (u) return moLaiRoiGo(u.dataset.billUnpay)
       .then(()=>toast('Đã chuyển về chưa thanh toán')).catch(fail);
     const d = e.target.closest('[data-bill-del]');
     if (d) return deleteBillSheet(d.dataset.billDel);
@@ -529,7 +529,13 @@ function bind(){
   };
   el('posBillIn').onclick = () => cauHinhInSheet();
 }
-const fail = e => { console.error(e); toast('Không gửi được — kiểm tra quyền ghi (.write)','err'); };
+// Lỗi Firebase thì câu mặc định hữu ích hơn nguyên văn tiếng Anh của SDK. Còn
+// lỗi mình tự ném ra để chặn một việc sai thì đã có câu tiếng Việt nói rõ phải
+// làm gì — nuốt nó đi rồi hiện "kiểm tra quyền ghi" là chỉ sai đường.
+const fail = e => {
+  console.error(e);
+  toast(e?.choNguoiDung ? e.message : 'Không gửi được — kiểm tra quyền ghi (.write)', 'err');
+};
 
 function setView(v){
   view = v; store.set('pos.view', v);
@@ -1146,11 +1152,18 @@ function renderBillList(){
         ${!paid
           ? `<button class="btn solid" data-bill-cash="${b.code}">💵 Tiền mặt</button>
              <button class="btn" data-bill-manual="${b.code}">🏦 Chuyển khoản</button>`
-          : `<button class="btn" data-bill-unpay="${b.code}">↩ Hoàn tác</button>`
+          : `<button class="btn" data-bill-unpay="${b.code}">↩ Mở lại</button>`
         }
         ${cauHinhIn().bat
           ? `<button class="btn" data-bill-in="${b.code}">🖨 ${daIn.has(b.code) ? 'In lại' : 'In'}</button>` : ''}
-        <button class="btn danger" data-bill-del="${b.code}">🗑</button>
+        ${paid
+          // Hóa đơn đã thu tiền: nút vẫn bấm được nhưng thôi màu đỏ — bấm vào
+          // là hiện lời giải thích và lối đi đúng. Nút xám câm thì người ta bấm
+          // ba lần rồi đi hỏi; nút đỏ thì mời gọi một việc mình đang chặn.
+          ? `<button class="btn" data-bill-del="${b.code}"
+               title="Đã thanh toán — Mở lại trước rồi mới xóa được"
+               style="opacity:.55">🗑</button>`
+          : `<button class="btn danger" data-bill-del="${b.code}">🗑</button>`}
       </div>
     </div>`;
   }).join('');
@@ -1470,13 +1483,51 @@ function soTuO(id){
   return Math.max(0, Math.round(Number(String(el(id)?.value ?? '').replace(/[^\d]/g, '')) || 0));
 }
 
+/**
+ * Mở lại hóa đơn, rồi gỡ số ly ấy khỏi sổ "Bán chạy".
+ *
+ * Phải gỡ, nếu không sẽ ĐẾM ĐÔI: hóa đơn mở lại thường được chốt lại dưới một
+ * mã mới, mà dấu chống trùng bên máy chủ khóa theo mã — mã mới thì dấu cũ
+ * không che được, và số ly ấy vào sổ hai lượt.
+ *
+ * Gỡ chạy sau khi mở lại đã xong, và không chờ kết quả: mở lại là việc về
+ * tiền, gỡ số liệu là việc xếp hạng món. Việc thứ hai hỏng thì `thong-ke-lai`
+ * dựng lại được, không có cớ gì để nó chặn việc thứ nhất.
+ */
+function moLaiRoiGo(code){
+  return moLaiHoaDon(code).then(() => { huyBanTaiQuan(code); });
+}
+
 function deleteBillSheet(code){
   const b = data.bills.find(x => x.code === code);
+
+  // Hóa đơn ĐÃ THU TIỀN thì không cho xóa thẳng.
+  //
+  // Xóa nó là mất dấu khoản tiền đã nhận — sổ thu trong ngày hụt đi đúng bằng
+  // số ấy mà không còn dòng nào giải thích. Còn đường đúng thì đã có sẵn:
+  // "Mở lại" đưa hóa đơn về chưa thanh toán, gỡ luôn số ly khỏi sổ "Bán chạy",
+  // và giữ dấu vết ai mở. Xóa xong mới thấy tiếc thì không lùi được.
+  if (b && b.status === 'paid') {
+    sheet({
+      title: 'Hóa đơn này đã thanh toán',
+      desc: 'Xóa thẳng là mất dấu khoản tiền đã nhận. Muốn sửa thì "Mở lại" trước — '
+          + 'hóa đơn về lại chưa thanh toán, số ly được gỡ khỏi sổ Bán chạy, rồi xóa được bình thường.',
+      actions:[
+        { label: 'Đóng' },
+        { label: 'Mở lại', cls: 'solid', onClick(){
+            moLaiRoiGo(code)
+              .then(() => toast('Đã chuyển về chưa thanh toán — giờ xóa được', 'ok'))
+              .catch(fail);
+          }
+        }
+      ]
+    });
+    return;
+  }
+
   sheet({
     title: 'Xóa hóa đơn?',
-    desc: b && b.status === 'paid'
-      ? 'Hóa đơn NÀY ĐÃ THANH TOÁN. Xóa đi là mất dấu khoản tiền đã nhận và bàn sẽ tính lại từ đầu.'
-      : 'Hóa đơn sẽ bị xóa vĩnh viễn. Món của bàn quay về danh sách chưa tính tiền.',
+    desc: 'Hóa đơn sẽ bị xóa vĩnh viễn. Món của bàn quay về danh sách chưa tính tiền.',
     actions:[
       { label: 'Giữ lại' },
       { label:'Xóa', cls:'solid danger', onClick(){

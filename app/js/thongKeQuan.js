@@ -39,31 +39,55 @@ const API = 'https://ghecauhai.netlify.app/api/thong-ke-quan';
  *   Không bao giờ ném lỗi. Gọi xong không bắt buộc phải xem kết quả.
  */
 export async function baoBanTaiQuan(b) {
+  return goi({ ma: b?.code, items: donDong(b) }, 'ghi');
+}
+
+/**
+ * Gỡ một hoá đơn khỏi sổ — gọi khi hoá đơn được **Mở lại**.
+ *
+ * Không gỡ thì đếm ĐÔI: hoá đơn mở lại rồi chốt lần nữa sẽ mang mã mới, nên
+ * dấu chống trùng của mã cũ không che được, và số ly ấy vào sổ hai lượt.
+ *
+ * @param {string} code mã hoá đơn
+ * @returns {Promise<{ok:boolean, coDau?:boolean, soLy?:number, boQua?:string}>}
+ *   Không bao giờ ném lỗi.
+ */
+export async function huyBanTaiQuan(code) {
+  return goi({ ma: code, huy: true }, 'gỡ');
+}
+
+/** Lọc lấy những dòng quy được về món trong thực đơn. */
+function donDong(b) {
+  return (b?.items ?? [])
+    .filter((i) => i?.stt != null && i.stt !== '')
+    .map((i) => ({ stt: i.stt, qty: Number(i.qty) || 0 }));
+}
+
+async function goi(than, viec) {
   const ma = cauHinhTem().ma;
   // Chưa dán mã thiết bị thì thôi, im lặng. Chủ quán chưa bật tính năng tem
   // cũng là chưa bật cái này — không phải lỗi để mà kêu.
   if (!ma) return { ok: false, boQua: 'chưa có mã thiết bị' };
-
-  const items = (b?.items ?? [])
-    .filter((i) => i?.stt != null && i.stt !== '')
-    .map((i) => ({ stt: i.stt, qty: Number(i.qty) || 0 }));
-  if (!items.length) return { ok: false, boQua: 'không có dòng nào có mã món' };
+  if (!than.ma) return { ok: false, boQua: 'thiếu mã hoá đơn' };
+  if (!than.huy && !than.items?.length) {
+    return { ok: false, boQua: 'không có dòng nào có mã món' };
+  }
 
   try {
     const res = await fetch(API, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-thiet-bi': ma },
-      body: JSON.stringify({ ma: b.code, items }),
+      body: JSON.stringify(than),
     });
     if (!res.ok) {
-      console.warn('[tk-quan] máy chủ trả', res.status);
+      console.warn('[tk-quan]', viec, 'máy chủ trả', res.status);
       return { ok: false, boQua: 'HTTP ' + res.status };
     }
     return await res.json();
   } catch (e) {
     // Mất mạng là chuyện thường ở quán. Ghi console cho người sửa, không dựng
     // gì lên màn hình của thu ngân.
-    console.warn('[tk-quan] không gửi được:', e?.message ?? e);
+    console.warn('[tk-quan] không', viec, 'được:', e?.message ?? e);
     return { ok: false, boQua: 'mất mạng' };
   }
 }

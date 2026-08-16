@@ -54,9 +54,12 @@ const MENU = [
 
 /** Mọi lần app gọi /api/tich-diem, ghi lại ở đây để bài kiểm soi. */
 let daGuiTem = [];
+/** Tương tự cho /api/thong-ke-quan — sổ "Bán chạy" của app khách. */
+let daGuiTK = [];
 
 async function mo({ cauHinhOK = true, maTem = 'ma-may-quay' } = {}){
   daGuiTem = [];
+  daGuiTK = [];
   // Chặn service worker: nó cache vỏ app và tự trả lời thay máy chủ, nên bài
   // kiểm sẽ đo bản đã cache của lần chạy trước chứ không phải mã vừa sửa.
   const ctx = await browser.newContext({
@@ -96,6 +99,13 @@ async function mo({ cauHinhOK = true, maTem = 'ma-may-quay' } = {}){
   }));
   await page.route(u => u.hostname === 'img.vietqr.io',
     r => r.fulfill({ status:200, contentType:'image/png', body: Buffer.from('89504e470d0a1a0a','hex') }));
+
+  await page.route(u => u.pathname.endsWith('/api/thong-ke-quan'), (r) => {
+    let t = {};
+    try { t = JSON.parse(r.request().postData() ?? '{}'); } catch { /* thôi */ }
+    daGuiTK.push({ ...t, maThietBi: r.request().headers()['x-thiet-bi'] ?? '' });
+    r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+  });
 
   // Sổ tem: 0901234567 đang có 7/10, 0909999999 đủ 10. Bản giả ghi lại mọi lần
   // `ghi` để bài kiểm soi được thu ngân đã gửi lên đúng cái gì.
@@ -384,6 +394,92 @@ console.log('\nMàn thanh toán trong quán\n');
   await page.waitForSelector('.pcard', { timeout: 5000 });
   bao(await page.locator('.pcard [data-a="nhan"]').count() === 0,
       'chưa bật in nhãn thì màn Chờ pha gọn như cũ');
+
+  bao(!loi.length, `không có lỗi JS${loi.length ? ': ' + loi[0] : ''}`);
+  await ctx.close();
+}
+
+/* ── 8. không xóa được hóa đơn ĐÃ THANH TOÁN ─────────────────────────────
+
+   Xóa một hóa đơn đã thu tiền là mất dấu khoản tiền ấy: sổ thu trong ngày hụt
+   đi đúng bằng số đó mà không còn dòng nào giải thích, và số ly thì vẫn nằm
+   trong sổ "Bán chạy" của app khách. Trước bản này nó chỉ tốn một cú bấm và
+   một dòng cảnh báo.                                                        */
+{
+  const { page, ctx, loi } = await mo();
+
+  await page.evaluate(() => {
+    window.__db.ghi('history/h1', { table: 3, stt: 1, item: 'Espresso', quantity: 2, price: 18000,
+      completedDate: new Date().toISOString().slice(0,10), timestamp: Date.now() - 600000 });
+  });
+  await page.waitForTimeout(300);
+  await page.locator('.tbtn[data-t="3"]').click();
+  await page.locator('#posView button[data-v="bill"]').click();
+  await page.locator('#posBillNew').click();
+  await page.waitForSelector('#nbPreview .bill-row', { timeout: 5000 });
+  await page.locator('#shFoot .btn.solid').click();
+  await page.waitForSelector('.bill-card', { timeout: 5000 });
+  const ma = (await page.locator('.bill-head .time').innerText()).match(/QCH\d{10}/)?.[0];
+
+  // Thu ngân bấm tay chứ không để webhook chốt: đường này mới gọi sổ Bán chạy.
+  await page.locator('[data-bill-cash]').click();
+  await page.waitForTimeout(250);
+  await page.locator('#shFoot .btn.solid').click();
+  await page.waitForTimeout(600);
+  bao(await page.locator('.bill-card.paid').count() === 1, 'thu tiền mặt -> hóa đơn sang ĐÃ thanh toán');
+  bao(daGuiTK.some(t => t.ma === ma && !t.huy && t.items?.length),
+      `chốt tiền -> báo số ly về sổ Bán chạy (thấy ${JSON.stringify(daGuiTK)})`);
+
+  const nutXoa = page.locator('[data-bill-del]');
+  bao(!(await nutXoa.getAttribute('class')).includes('danger'),
+      'hóa đơn đã trả -> nút 🗑 thôi màu đỏ, không mời gọi một việc đang bị chặn');
+  bao(/Mở lại/.test(await nutXoa.getAttribute('title') ?? ''),
+      'rê vào nút là thấy ngay phải làm gì thay vì xóa');
+
+  await nutXoa.click();
+  await page.waitForTimeout(250);
+  bao((await page.locator('#shTitle').innerText()).includes('đã thanh toán'),
+      'bấm 🗑 -> nói thẳng là hóa đơn đã thanh toán');
+  const nut = await page.locator('#shFoot .btn').allInnerTexts();
+  bao(!nut.some(t => /^Xóa/.test(t)),
+      'KHÔNG có nút Xóa nào trong tấm này — chặn hẳn, không phải cảnh báo rồi vẫn cho bấm');
+  bao(nut.some(t => t.includes('Mở lại')), `có lối đi đúng: "Mở lại" (thấy ${JSON.stringify(nut)})`);
+  bao(await page.evaluate((m) => !!window.__db.store.bills?.[m], ma),
+      'hóa đơn vẫn còn nguyên sau khi bấm 🗑');
+
+  // Chặn ở tầng dữ liệu nữa: màn hình có nhiều lối vào, tiền thì chỉ có một.
+  const chan = await page.evaluate(async (m) => {
+    const { xoaHoaDon } = await import('./js/core.js');
+    try { await xoaHoaDon(m); return 'KHÔNG CHẶN'; } catch (e) { return e.message; }
+  }, ma);
+  bao(/Mở lại/.test(chan), `gọi thẳng xoaHoaDon cũng bị chặn (thấy "${chan}")`);
+
+  /* Mở lại -> mới xóa được */
+  await page.locator('#shFoot .btn.solid').click();     // "Mở lại"
+  await page.waitForTimeout(700);
+  bao(await page.evaluate((m) => window.__db.store.bills?.[m]?.status, ma) === 'unpaid',
+      'bấm Mở lại -> hóa đơn về chưa thanh toán');
+  bao(await page.locator('.bill-card.paid').count() === 0, 'thẻ trên màn hình cũng đổi theo');
+
+  // Đây là chỗ đếm ĐÔI nếu quên: hóa đơn mở lại thường được chốt lại dưới mã
+  // MỚI, mà dấu chống trùng bên máy chủ khóa theo mã.
+  bao(daGuiTK.some(t => t.ma === ma && t.huy === true),
+      `Mở lại -> gỡ số ly khỏi sổ Bán chạy (thấy ${JSON.stringify(daGuiTK)})`);
+
+  bao((await page.locator('[data-bill-del]').getAttribute('class')).includes('danger'),
+      'chưa trả tiền thì nút 🗑 đỏ trở lại');
+  await page.locator('[data-bill-del]').click();
+  await page.waitForTimeout(250);
+  bao((await page.locator('#shTitle').innerText()).includes('Xóa hóa đơn'),
+      'giờ mới ra tấm xác nhận xóa bình thường');
+  await page.locator('#shFoot .btn.danger').click();
+  await page.waitForTimeout(500);
+
+  bao(await page.evaluate((m) => !window.__db.store.bills?.[m], ma), 'xóa xong hóa đơn biến mất');
+  const banSao = await page.evaluate((m) => window.__db.store.billsXoa?.[m] ?? null, ma);
+  bao(!!banSao, 'có bản sao trong billsXoa/ — bản sao rẻ hơn một buổi tối đi dò');
+  bao(banSao?.total === 36000, `bản sao giữ đủ số tiền (thấy ${banSao?.total})`);
+  bao('xoaLuc' in (banSao || {}), 'bản sao ghi lúc xóa');
 
   bao(!loi.length, `không có lỗi JS${loi.length ? ': ' + loi[0] : ''}`);
   await ctx.close();

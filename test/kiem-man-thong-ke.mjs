@@ -334,6 +334,80 @@ console.log('\nTab Thống kê — giảm giá ở hóa đơn\n');
   await ctx.close();
 }
 
+/* ── 5. thẻ "Hóa đơn đã xóa" ─────────────────────────────────────────────
+
+   `xoaHoaDon` chép sang `billsXoa/` trước khi xóa, nhưng trước bản này không
+   màn nào đọc nhánh đó — bản sao chỉ là dữ liệu chết. Thẻ này là cái cửa sổ
+   duy nhất nhìn vào nó, và nó phải ẨN khi kỳ không có hóa đơn nào bị xóa: một
+   thẻ "0 hóa đơn" đứng mãi thì mắt quen dần, rồi hôm nó khác 0 cũng không ai
+   thấy.                                                                     */
+{
+  const { page, ctx, loi } = await mo();
+  await dungCanh(page);
+
+  bao((await page.locator('#rpXoaCard').getAttribute('class')).includes('hide'),
+      'không có hóa đơn nào bị xóa -> thẻ ẩn hẳn');
+
+  const ma = await page.evaluate(() => {
+    const nay = new Date().toISOString().slice(0, 10);
+    const m = 'QCH' + nay.slice(2).replace(/-/g, '') + '0007';
+    window.__db.ghi('billsXoa/' + m, {
+      code: m, table: 9, status: 'unpaid', subtotal: 84000, total: 84000,
+      items: [{ name: 'Espresso', stt: 1, qty: 2, price: 20000 },
+              { name: 'Bạc xỉu', stt: 3, qty: 1, price: 44000 }],
+      xoaBoi: 'thungan@ghecauhai.vn', xoaLuc: Date.now() - 300000,
+    });
+    // Chạm vào `bills` để màn Thống kê bỏ bộ nhớ đệm và tải lại nhánh đã xóa.
+    window.__db.ghi('bills/nudge', null);
+    return m;
+  });
+  await page.waitForTimeout(900);
+
+  const cls = await page.locator('#rpXoaCard').getAttribute('class');
+  bao(!cls.includes('hide'), 'có hóa đơn bị xóa -> thẻ hiện ra');
+
+  if (!cls.includes('hide')) {
+    const txt = (await page.locator('#rpXoaList').innerText()).replace(/\n+/g, ' | ');
+    bao(txt.includes(ma), `thấy mã hóa đơn (${ma})`);
+    bao(txt.includes('Bàn 9'), `thấy bàn (thấy "${txt}")`);
+    bao(txt.includes('84.000'), 'thấy số tiền mất theo');
+    bao(txt.includes('thungan@ghecauhai.vn'), 'thấy AI xóa — không truy được thì bản sao chỉ nửa vời');
+    bao(/\d{2}\/\d{2} lúc \d{2}:\d{2}/.test(txt), `thấy LÚC NÀO xóa (thấy "${txt}")`);
+    bao((await page.locator('#rpXoaN').innerText()).includes('84.000'),
+        'tiêu đề thẻ cộng sẵn tổng tiền');
+
+    /* dựng lại */
+    await page.locator('[data-xoa-phuc]').click();
+    await page.waitForTimeout(250);
+    bao((await page.locator('#shTitle').innerText()).includes(ma), 'bấm Dựng lại -> hỏi lại cho chắc');
+    await page.locator('#shFoot .btn.solid').click();
+    await page.waitForTimeout(700);
+
+    const b = await page.evaluate((m) => window.__db.store.bills?.[m] ?? null, ma);
+    bao(!!b, 'hóa đơn quay lại nhánh bills/');
+    bao(b?.status === 'unpaid', `dựng lại ở trạng thái CHƯA thanh toán (thấy "${b?.status}")`);
+    bao(b?.total === 84000, 'giữ nguyên số tiền và các dòng món');
+    bao(!!b?.khoiPhucBoi || b?.khoiPhucBoi === null, 'có dấu vết ai dựng lại');
+    bao(!!(await page.evaluate((m) => window.__db.store.billsXoa?.[m], ma)),
+        'bản sao vẫn nằm nguyên trong billsXoa/ — đó là sổ, không phải thùng rác');
+
+    /* dựng lại lần nữa phải bị chặn: ghi đè hóa đơn đang sống là mất một khoản thu thật */
+    const lan2 = await page.evaluate(async (m) => {
+      const { khoiPhucHoaDon } = await import('./js/core.js');
+      try { await khoiPhucHoaDon(m); return 'KHÔNG CHẶN'; } catch (e) { return e.message; }
+    }, ma);
+    bao(/đang có hóa đơn sống/.test(lan2), `mã đã có hóa đơn sống thì từ chối (thấy "${lan2}")`);
+
+    await page.locator('#rpXoaCard').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: 'test/anh-thong-ke-hoadon-xoa.png' });
+    console.log('  ✓ test/anh-thong-ke-hoadon-xoa.png');
+  }
+
+  bao(!loi.length, `không có lỗi JS${loi.length ? ': ' + loi[0] : ''}`);
+  await ctx.close();
+}
+
 await browser.close();
 server.close();
 console.log(hong ? `\n✗ ${hong} chỗ sai\n` : '\n✓ Tất cả đúng\n');
