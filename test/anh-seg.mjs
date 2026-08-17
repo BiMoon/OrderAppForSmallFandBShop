@@ -61,9 +61,19 @@ const DO = `(() => {
   for (const seg of document.querySelectorAll('.seg')) {
     const on = seg.querySelector('button.active'); if (!on) continue;
     const bs = [...seg.querySelectorAll('button')];
+    // Tab CHƯA chọn cũng phải tách được nhau ra: mỗi cái một nền riêng và một
+    // viền riêng. Chỉ đo độ sáng là không đủ — ô trắng trên rãnh xám chỉ hơn
+    // nhau 1,17:1, mắt bắt được là nhờ cái viền chứ không nhờ độ sáng.
+    const tat = bs.filter(b => !b.classList.contains('active'));
+    const thieuNen  = tat.filter(b => { const c=getComputedStyle(b).backgroundColor;
+                                        return !c || c==='rgba(0, 0, 0, 0)' || c==='transparent'; });
+    const thieuVien = tat.filter(b => { const cs=getComputedStyle(b);
+      return cs.boxShadow==='none' && cs.borderStyle==='none'
+             && getComputedStyle(b,'::before').content==='none'; });
     ra.push({ id: seg.id || '(không id)', viTri: bs.indexOf(on)+1, tong: bs.length,
               nhan: on.textContent.trim().slice(0,18),
-              tuongPhan: +cr(px(on), px(seg)).toFixed(2) });
+              tuongPhan: +cr(px(on), px(seg)).toFixed(2),
+              tatSoLuong: tat.length, thieuNen: thieuNen.length, thieuVien: thieuVien.length });
   }
   return ra;
 })()`;
@@ -106,6 +116,10 @@ for (const mau of ['light','dark']) {
     const seg = ra.find(x => x.id === 'posView');
     bao(seg && seg.tuongPhan >= 3,
         `${ten} (vị trí ${seg?.viTri}/${seg?.tong}) — viên/rãnh ${seg?.tuongPhan}:1 ${seg?.tuongPhan >= 3 ? '' : '← DƯỚI 3:1, nhìn không ra'}`);
+    bao(seg && seg.thieuNen === 0 && seg.thieuVien === 0,
+        `   ${seg?.tatSoLuong} tab chưa chọn đều có nền + viền riêng`
+        + (seg?.thieuNen ? ` ← ${seg.thieuNen} tab KHÔNG có nền` : '')
+        + (seg?.thieuVien ? ` ← ${seg.thieuVien} tab KHÔNG có viền` : ''));
     if (v === 'entry' || v === 'bill') {
       await page.locator('#posView').scrollIntoViewIfNeeded();
       const box = await page.locator('#posView').boundingBox();

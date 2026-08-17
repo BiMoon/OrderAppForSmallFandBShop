@@ -290,7 +290,24 @@ main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior
   background:var(--seg-active);color:var(--seg-active-ink);
   font-weight:700;box-shadow:var(--shadow-1);
 }
-.seg button:not(.active):active{background:var(--surface)}
+/* Ranh giới giữa các tab CHƯA chọn.
+   Bản trước mới chỉ làm rõ tab ĐANG chọn; các tab còn lại vẫn nằm chung một
+   mảng phẳng, nhãn dính nhau và không biết chạm vào đâu là trúng tab nào —
+   dải này có tới 4-5 tab con nên càng rối.
+
+   Đã thử ba cách và chụp ra so:
+     · vạch ngăn dọc kiểu iOS — đẹp nhất, nhưng dải 5 nút ở tab Thống kê
+       XUỐNG DÒNG, và nút đầu hàng dưới lòi ra một vạch thừa treo lơ lửng;
+     · ô trắng không viền, chỉ chừa khe — khe chỉ hơn nền 1,17:1, tức lặp
+       lại đúng cái bẫy vừa sửa xong;
+     · ô trắng CÓ viền + khe rộng — chọn cách này. An toàn khi xuống dòng,
+       và ranh giới không phụ thuộc vào một mình độ sáng. */
+.seg{gap:4px}
+.seg button:not(.active){
+  background:var(--surface);
+  box-shadow:0 0 0 1px var(--line-strong) inset;
+}
+.seg button:not(.active):active{background:var(--surface-2)}
 /* Con số đi kèm ("Giỏ 3", "Chờ pha 12"): trước đây là chữ trần dính sát nhãn,
    nhìn ra thành "Giỏ 3" như một cụm từ. Bọc thành viên tròn để mắt tách được
    nhãn với số. */
