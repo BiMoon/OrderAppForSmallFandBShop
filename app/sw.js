@@ -6,7 +6,7 @@
    • Firebase Realtime Database: KHÔNG cache — dữ liệu phải luôn tươi và
      bản thân SDK đã tự xử lý hàng đợi khi mất mạng.
    ========================================================================== */
-const VERSION = 'v1.15.0';
+const VERSION = 'v1.16.0';
 const SHELL   = 'phache-shell-' + VERSION;
 const SHEETS  = 'phache-sheets-' + VERSION;
 const SDK     = 'phache-sdk-' + VERSION;

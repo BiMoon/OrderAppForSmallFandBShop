@@ -62,6 +62,18 @@
   --shadow-2:0 4px 16px rgba(15,25,35,.08),0 2px 6px rgba(15,25,35,.04);
   --shadow-3:0 24px 56px rgba(15,25,35,.18),0 8px 20px rgba(15,25,35,.08);
   --shadow-brand:0 4px 16px rgba(13,148,136,.35);
+
+  /* Dải phân đoạn (.seg).
+     Bản cũ: viên đang chọn nền #ffffff nằm trên rãnh #f7f9fb — tương phản
+     1,06:1, tức gần như không có ranh giới. Thứ duy nhất phân biệt là cái
+     bóng đổ rất nhạt, mà bóng thì chỉ đọc được khi viên nằm GIỮA và có
+     khoảng hở hai bên. Chọn tab đầu hoặc cuối là mép viên trùng luôn với góc
+     bo của rãnh, bóng không còn chỗ tựa, và không ai biết đang đứng ở tab
+     nào. Đây là thanh chuyển màn hình dùng nhiều nhất trong ca — phải nhìn
+     một cái là thấy, ở khoảng cách một cánh tay, dưới đèn quán. */
+  --seg-nen:#e9eef4;
+  --seg-active:linear-gradient(135deg,#115e59,#0f766e);
+  --seg-active-ink:#ffffff;
   --shadow-amber:0 4px 16px rgba(217,119,6,.3);
 
   /* Misc */
@@ -93,6 +105,12 @@
     --late-soft:rgba(220,38,38,.15);
     --amber-soft:rgba(217,119,6,.15);
     --shadow-1:0 1px 2px rgba(0,0,0,.2),0 2px 6px rgba(0,0,0,.25);
+    /* Chế độ tối lật ngược: viên sáng lên, chữ trong viên chuyển thành màu
+       nền. Dùng đúng tông xanh đậm như bản sáng thì viên chỉ hơn rãnh 2,5:1
+       — vẫn chìm. */
+    --seg-nen:#0b0f14;
+    --seg-active:linear-gradient(135deg,#0d9488,#14b8a6);
+    --seg-active-ink:#08131a;
     --shadow-2:0 4px 16px rgba(0,0,0,.3),0 2px 6px rgba(0,0,0,.2);
     --shadow-3:0 24px 56px rgba(0,0,0,.5),0 8px 20px rgba(0,0,0,.3);
   }
@@ -254,17 +272,42 @@ main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior
    SEGMENTED CONTROL
    ════════════════════════════════════════ */
 .seg{
-  display:flex;background:var(--surface-2);
+  display:flex;background:var(--seg-nen);
   border:1px solid var(--line);border-radius:13px;padding:3px;gap:2px;
+  box-shadow:inset 0 1px 2px rgba(15,25,35,.05);
 }
 .seg button{
   flex:1;min-height:38px;border-radius:10px;
-  font-size:13px;font-weight:600;color:var(--ink-3);transition:.15s;
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  font-size:13px;font-weight:600;color:var(--ink-2);
+  transition:background .15s,color .15s,box-shadow .15s;
 }
+/* Viên đang chọn tô nền thương hiệu, không phải nền trắng.
+   Tương phản với rãnh: 4,95–6,86:1 (sáng) và 5,05–7,60:1 (tối) — trước là
+   1,06:1. Không còn phụ thuộc vào bóng đổ nên tab đầu và tab cuối đọc rõ
+   y như tab giữa. */
 .seg button.active{
-  background:var(--surface);color:var(--ink);
-  box-shadow:var(--shadow-1);
+  background:var(--seg-active);color:var(--seg-active-ink);
+  font-weight:700;box-shadow:var(--shadow-1);
 }
+.seg button:not(.active):active{background:var(--surface)}
+/* Con số đi kèm ("Giỏ 3", "Chờ pha 12"): trước đây là chữ trần dính sát nhãn,
+   nhìn ra thành "Giỏ 3" như một cụm từ. Bọc thành viên tròn để mắt tách được
+   nhãn với số. */
+.seg button .c{
+  min-width:19px;padding:1px 6px;border-radius:99px;
+  font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;
+  background:var(--surface);color:var(--ink-2);
+  box-shadow:0 0 0 1px var(--line) inset;
+}
+/* Viên đếm trên nền teal: KHÔNG dùng nền trắng mờ như .chip.active.
+   Mẹo đó chỉ chạy khi viên nằm trên nền gần đen; đặt lên teal thì trắng mờ
+   kéo nền sáng lên và chữ trắng tụt còn 3,82:1 — bộ đo tương phản bắt được
+   ngay. Nền ĐỤC màu bề mặt, chữ màu thương hiệu: đọc rõ ở cả hai chế độ. */
+.seg button.active .c{
+  background:var(--surface);color:var(--brand-ink);box-shadow:none;
+}
+.seg button .c:empty{display:none}
 .seg.wrap{flex-wrap:wrap}
 .seg.wrap button{flex:1 1 auto;min-width:72px}
 

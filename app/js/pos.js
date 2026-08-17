@@ -42,8 +42,8 @@ function shell(){
 
   <div class="seg" id="posView" style="margin-bottom:14px">
     <button data-v="entry">Chọn món</button>
-    <button data-v="cart">Giỏ <span class="c" id="vcCart">0</span></button>
-    <button data-v="pending">Chờ pha <span class="c" id="vcPend">0</span></button>
+    <button data-v="cart">Giỏ <span class="c" id="vcCart"></span></button>
+    <button data-v="pending">Chờ pha <span class="c" id="vcPend"></span></button>
     <button data-v="bill">💳 Hóa đơn <span class="c" id="vcBill">0</span></button>
   </div>
 
@@ -691,7 +691,7 @@ function renderCart(){
   const tq = cart.reduce((s,o)=>s+o.qty,0);
   const tv = cart.reduce((s,o)=>s+(o.price||0)*o.qty,0);
   const noPrice = cart.some(o=>o.price == null);
-  el('vcCart').textContent = tq;
+  el('vcCart').textContent = tq || '';
 
   el('posCartList').innerHTML = list.length ? list.map(o=>`
     <div class="crow">
@@ -856,7 +856,7 @@ function renderPending(){
                  .slice().sort((a,b) => a.at - b.at);
   const q = rows.reduce((s,o)=>s+(Number(o.quantity)||0),0);
   el('posPendNote').textContent = rows.length ? `${rows.length} món · ${q} ly` : '';
-  el('vcPend').textContent = data.orders.reduce((s,o)=>s+(Number(o.quantity)||0),0);
+  el('vcPend').textContent = data.orders.reduce((s,o)=>s+(Number(o.quantity)||0),0) || '';
 
   if (!rows.length){
     el('posPendList').innerHTML = `<div class="empty"><div class="ic">✅</div>
