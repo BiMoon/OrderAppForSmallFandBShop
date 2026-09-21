@@ -100,6 +100,75 @@ Nếu sửa file trong `app/js/` hoặc `app/app.css`, **nhớ tăng số phiên
 const VERSION = 'v1.0.1';   // đổi mỗi lần phát hành
 ```
 
+## 4.1. Xuất CSV và sổ S1a-HKD trong tab Thống kê
+
+### Cách xuất
+
+1. Mở `https://quanlyphachequan.web.app/app/` và đăng nhập.
+2. Chọn tab **Thống kê**.
+3. Chọn đúng kỳ cần xem: **Ngày**, **Tháng**, **Năm**, **Khoảng** hoặc **Tất cả**.
+4. Chờ biểu ngữ tải dữ liệu biến mất và kiểm tra doanh thu trên màn hình.
+5. Bấm một trong hai nút:
+    - **Xuất CSV doanh thu theo món**: tổng hợp theo món, có doanh thu niêm yết,
+       giảm giá, thực thu, phương thức thanh toán và món bị hủy.
+    - **Xuất sổ S1a-HKD (nộp thuế)**: mỗi hóa đơn là một chứng từ, có cộng tháng,
+       cộng quý và tổng cộng.
+
+Trên Android, nếu hệ điều hành cho phép chia sẻ tệp, app sẽ mở bảng **Chia sẻ**.
+Nếu không, file được tải vào thư mục **Downloads**. Tên file có dạng:
+
+```text
+doanhthu-2026-09-01_2026-09-30.csv
+so-S1a-HKD-2026-09-01_2026-09-30.csv
+```
+
+### Điều kiện để số liệu đúng
+
+- Sổ S1a chỉ ghi hóa đơn có trạng thái **đã thanh toán**.
+- Doanh thu lấy từ `total`, tức số sau giảm giá, không lấy tiền khách đưa và tiền
+   thối.
+- Ngày chứng từ lấy theo lúc thu tiền (`paidAt`), sau đó mới lọc vào kỳ báo cáo.
+- Hóa đơn tạo gần nửa đêm được tải rộng hơn một ngày để nối dữ liệu, nhưng khi
+   xuất S1a vẫn được lọc lại theo ngày thu tiền thực tế.
+- S1a chỉ gồm doanh thu bán tại quán từ hóa đơn `QCH...`. Đơn online `GCH...` nằm
+   ở hệ thống khác và phải cộng thêm trước khi nộp.
+- Hóa đơn đã thanh toán nhưng thiếu mốc thời gian sẽ được báo trong file, không
+   âm thầm bỏ qua.
+
+### Nếu bấm nút không thấy gì
+
+1. Chọn lại tab **Thống kê**, chọn kỳ cụ thể, rồi chờ tải xong.
+2. Kiểm tra biểu ngữ cảnh báo: nếu còn dòng **Đang tải hóa đơn của kỳ này**, chờ
+    rồi bấm lại.
+3. Kiểm tra thư mục **Downloads** hoặc bảng chia sẻ của điện thoại. File có đuôi
+    `.csv`, không mở trực tiếp trong app.
+4. Nếu app đã được cài như PWA, đóng hẳn app rồi mở lại. Khi thấy dải **Đã có bản
+    cập nhật mới**, bấm **Tải lại**.
+5. Nếu vẫn lỗi, mở app bằng Chrome tại `/app/`, không mở shortcut cũ; hoặc vào
+    Chrome → Cài đặt trang web → Xóa dữ liệu trang, rồi đăng nhập lại.
+
+### Kiểm tra sau khi xuất
+
+Mở file bằng Excel hoặc Google Sheets và đối chiếu:
+
+- `Số chứng từ` với số hóa đơn đã thanh toán trong kỳ.
+- `TỔNG CỘNG` với doanh thu thực thu trên màn hình.
+- Sổ S1a có dòng cảnh báo **chỉ gồm doanh thu BÁN TẠI QUÁN**.
+- File S1a có tên mẫu, năm, mã số thuế, địa chỉ và chỗ ký tên.
+
+Nếu hai tổng không khớp, không nộp ngay. Kiểm tra trước hóa đơn bị treo, hóa đơn
+thiếu `paidAt`, hóa đơn đã xóa và các đơn online chưa cộng vào sổ.
+
+### Kiểm thử và phát hành bản sửa
+
+```bash
+node --test test/soS1a.test.mjs test/sw.test.mjs
+firebase deploy --only hosting
+```
+
+Sau mỗi thay đổi trong `app/js/` hoặc `app/app.css`, phải tăng `VERSION` trong
+`app/sw.js`; nếu không, PWA có thể tiếp tục chạy file cũ từ cache.
+
 ---
 
 ## 5. Quyền Firebase cần có

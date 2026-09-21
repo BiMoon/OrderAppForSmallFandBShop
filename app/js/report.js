@@ -15,7 +15,7 @@ import {
   khoiPhucHoaDon, sheet
 } from './core.js';
 import { ganThucThu, congSo, congTheoCachTra, CACH_TRA } from './thucThu.js';
-import { csvS1a } from './soS1a.js';
+import { csvS1a, mocHoaDon } from './soS1a.js';
 import { QUAN } from './quanInfo.js';
 
 let mode   = store.get('rp.mode', 'day');    // day | month | year | range | all
@@ -595,7 +595,13 @@ function khoiPhucSheet(code){
 function xuatS1a(){
   if (!last) return toast('Chưa có dữ liệu để xuất','err');
   const { from, to } = last;
-  const bills = hoaDonKy(from, to);
+  // Truy vấn hóa đơn nới thêm một ngày ở mỗi đầu để ghép dữ liệu lịch sử.
+  // Sổ phải lọc lại theo ngày thực thu, nếu không hóa đơn sát ranh giới có
+  // thể lọt sang kỳ báo cáo kế bên.
+  const bills = hoaDonKy(from, to).filter(b => {
+    const moc = mocHoaDon(b);
+    return !moc || inR(ymd(new Date(moc)), from, to);
+  });
 
   if (dangTaiHoaDon){
     // Xuất sổ thuế bằng 200 hoá đơn tạm là ra một con số thiếu mà trông như đủ.
@@ -656,14 +662,28 @@ function csv(){
  */
 function taiVe(blob, name, xong){
   const file = window.File ? new File([blob], name, { type: blob.type }) : null;
-  if (file && navigator.canShare && navigator.canShare({ files:[file] })){
+  const coTheChiaSe = file && typeof navigator.canShare === 'function'
+    && typeof navigator.share === 'function'
+    && navigator.canShare({ files:[file] });
+  if (coTheChiaSe){
     navigator.share({ files:[file], title: name })
       .then(()=>toast('Đã chia sẻ ' + name,'ok'))
-      .catch(()=>{});
+      .catch(err => {
+        // Người dùng bấm huỷ thì không báo lỗi; lỗi API phải rơi về tải file.
+        if (err?.name === 'AbortError') return;
+        taiFile(blob, name, xong);
+      });
     return;
   }
+  taiFile(blob, name, xong);
+}
+
+function taiFile(blob, name, xong){
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = name; a.click();
-  URL.revokeObjectURL(a.href);
+  const url = URL.createObjectURL(blob);
+  a.href = url; a.download = name; a.rel = 'noopener';
+  document.body.appendChild(a); a.click(); a.remove();
+  // Trình duyệt có thể chưa đọc xong object URL ngay sau click.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
   toast(xong || ('Đã xuất ' + name), 'ok');
 }
