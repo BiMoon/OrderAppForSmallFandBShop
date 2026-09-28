@@ -130,7 +130,7 @@ export function boCucHoaDon(b, o = {}){
     const dong = ngatDong(i.name, cot);
     for (const d of dong) kh.push(chu(d));
     // Dòng số lùi vào hai ô: mắt lướt dọc mép trái là thấy ngay đâu là tên món.
-    kh.push(chu(haiCot(`  ${sl} x ${tien(gia)}`, tien(gia * sl), cot)));
+    kh.push(chu(haiCot(`  ${sl} ${i.unit || 'ly'} x ${tien(gia)}`, tien(gia * sl), cot)));
   }
 
   kh.push(ke());

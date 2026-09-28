@@ -140,11 +140,23 @@ test('phiếu chưa trả: có đủ mã, bàn, từng món và tổng', () => {
   assert.ok(co(kh, 'QCH2608140007'));
   assert.ok(co(kh, 'Bàn 3'));
   assert.ok(co(kh, 'Espresso'));
-  assert.ok(co(kh, '2 x 20.000đ'));
+  assert.ok(co(kh, '2 ly x 20.000đ'));
   assert.ok(co(kh, '40.000đ'), 'thành tiền của dòng Espresso');
   assert.ok(co(kh, 'TỔNG CỘNG'));
   assert.ok(co(kh, '85.000đ'));
   assert.ok(co(kh, 'PHIẾU TÍNH TIỀN'));
+});
+
+test('hóa đơn dùng đơn vị p cho món điểm tâm, món không có đơn vị vẫn dùng ly', () => {
+  const kh = boCucHoaDon({
+    ...HD,
+    items: [
+      { name: 'Bánh mì bò kho', qty: 2, price: 35000, unit: 'p' },
+      { name: 'Espresso', qty: 1, price: 20000 },
+    ],
+  }, {});
+  assert.ok(co(kh, '2 p x 35.000đ'));
+  assert.ok(co(kh, '1 ly x 20.000đ'));
 });
 
 test('tên món dài bị ngắt chứ không cắt cụt', () => {

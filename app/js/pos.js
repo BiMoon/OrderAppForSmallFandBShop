@@ -35,6 +35,18 @@ let mounted  = false;
 
 const saveCart = () => store.set('pos.cart', cart);
 
+const chuanHoaNhomMon = value => String(value ?? '')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+function donViMon(item){
+  if (item?.unit) return item.unit;
+  const mon = data.menu.find(row => String(row['STT']) === String(item?.stt));
+  const laDiemTam = mon && Object.entries(mon).some(([key, value]) =>
+    /nhom|loai|danhmuc|category|group/.test(chuanHoaNhomMon(key)) &&
+    chuanHoaNhomMon(value) === 'diem tam');
+  return laDiemTam ? 'p' : 'ly';
+}
+
 /* ─────────────────── khung màn hình ─────────────────── */
 function shell(){
   return `
@@ -990,7 +1002,7 @@ function newBillSheet(){
       + (items.length
       ? items.map(i => `<div class="bill-row">
           <span class="bn">${esc(i.name)}${i.status==='pending' ? ' <span style="color:var(--warn);font-size:11px">(chờ pha)</span>' : ''}</span>
-          <span class="bq">${i.qty} ly</span>
+          <span class="bq">${i.qty} ${donViMon(i)}</span>
           <span class="bp">${i.price != null ? money(i.price*i.qty) : '—'}</span>
         </div>`).join('')
         + `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">
@@ -1045,7 +1057,7 @@ function newBillSheet(){
           // phải đi đòi lại, và không ai mất tem oan.
           // Chụp lại số tem lúc này để in lên giấy. Không lưu thì lúc in phải
           // gọi máy chủ lần nữa, mà lúc đó khách đã đứng dậy đi rồi.
-          saveBill({ table: selTable, items, subtotal, discount, discAmt, total,
+          saveBill({ table: selTable, items: items.map(i => ({ ...i, unit: donViMon(i) })), subtotal, discount, discAmt, total,
                      sdt: chuanHoaSdt(sdt) ?? '', doiQua: !!qua, qua: qua ?? null,
                      temTruoc: so ? so.tem : null,
                      temMoc: so ? so.moc : null,
@@ -1318,7 +1330,7 @@ function renderBillList(){
       <div class="bill-items">
         ${(b.items||[]).map(i => `<div class="bill-row">
           <span class="bn">${esc(i.name)}</span>
-          <span class="bq">${i.qty} ly</span>
+          <span class="bq">${i.qty} ${donViMon(i)}</span>
           <span class="bp">${i.price != null ? money(i.price*i.qty) : '—'}</span>
         </div>`).join('')}
       </div>
@@ -1391,7 +1403,8 @@ async function inMotHoaDon(code, nut){
       ? null
       : vietQRUrl(Math.max(0, (Number(b.total) || 0) - (Number(b.paidAmount) || 0)) || b.total,
                   b.code || `BAN ${b.table}`);
-    await inHoaDon(b, { qr, inLai: daIn.has(code), nganKeo: b.payMethod === 'tienmat' });
+    await inHoaDon({ ...b, items: (b.items || []).map(i => ({ ...i, unit: donViMon(i) })) },
+      { qr, inLai: daIn.has(code), nganKeo: b.payMethod === 'tienmat' });
     daIn.add(code);
     toast('Đã gửi tới máy in', 'ok');
   }catch(e){
