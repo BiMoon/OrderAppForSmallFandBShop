@@ -221,16 +221,17 @@
   }
 
   .t-done{
-    width:100%;border:0;cursor:pointer;
-    background:var(--ink);color:#fff;
+    width:100%;border:1px solid #166534;cursor:pointer;
+    background:#166534;color:#fff;
     padding:12px;border-radius:10px;
     font-size:14.5px;font-weight:700;letter-spacing:.01em;
     display:flex;align-items:center;justify-content:center;gap:8px;
     transition:.15s;
   }
-  .t-done:hover{background:var(--ok)}
+  .t-done:hover{background:#14532d;border-color:#14532d}
   .t-done:active{transform:scale(.98)}
-  .t-done[disabled]{opacity:.5;cursor:default}
+  .t-done:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
+  .t-done[disabled]{background:#14532d;border-color:#14532d;color:#fff;cursor:wait}
 
   /* ---- yêu cầu hủy từ thu ngân ---- */
   .ticket.cx-req{
